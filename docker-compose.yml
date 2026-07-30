@@ -1,0 +1,38 @@
+services:
+  true-balance-db:
+    image: postgres:16
+    container_name: true-balance-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: true_balance_user
+      POSTGRES_PASSWORD: true_balance_password
+      POSTGRES_DB: true_balance_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - true-balance-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U true_balance_user -d true_balance_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  true-balance-api:
+    build:
+      context: .
+      dockerfile: src/TrueBalance.Api/Dockerfile
+    container_name: true-balance-api
+    restart: unless-stopped
+    depends_on:
+      true-balance-db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: "Server=true-balance-db;Port=5432;Database=true_balance_db;User Id=true_balance_user;Password=true_balance_password;"
+    ports:
+      - "5080:8080"
+
+volumes:
+  true-balance-db-data:
