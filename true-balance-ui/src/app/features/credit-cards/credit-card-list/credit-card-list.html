@@ -16,6 +16,7 @@
       <table class="w-full border-collapse bg-white shadow-sm rounded-lg overflow-hidden">
         <thead class="bg-gray-100 text-left text-sm text-gray-600">
           <tr>
+            <th class="px-4 py-2">Ícone</th>
             <th class="px-4 py-2">Nome</th>
             <th class="px-4 py-2">Fechamento</th>
             <th class="px-4 py-2">Vencimento</th>
@@ -26,9 +27,17 @@
         <tbody>
           @for (creditCard of creditCardList; track creditCard.id) {
             <tr class="border-t border-gray-200">
+              <td class="px-4 py-2">
+                <span
+                  class="flex items-center justify-center w-8 h-8 rounded-full shrink-0"
+                  [style.background-color]="cardColor(creditCard.color)"
+                >
+                  <lucide-icon [name]="resolveIconName(creditCard.icon)" [size]="16" color="white"></lucide-icon>
+                </span>
+              </td>
               <td class="px-4 py-2">{{ creditCard.name }}</td>
-              <td class="px-4 py-2">dia {{ creditCard.closingDay }}</td>
-              <td class="px-4 py-2">dia {{ creditCard.dueDay }}</td>
+              <td class="px-4 py-2">Dia {{ creditCard.closingDay }}</td>
+              <td class="px-4 py-2">Dia {{ creditCard.dueDay }}</td>
               <td class="px-4 py-2 font-medium">{{ creditCard.limit | currency: 'BRL' }}</td>
               <td class="px-4 py-2 text-right whitespace-nowrap">
                 <a

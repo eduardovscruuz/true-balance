@@ -18,7 +18,7 @@
           <tr>
             <th class="px-4 py-2">Conta</th>
             <th class="px-4 py-2">Tipo</th>
-            <th class="px-4 py-2">Saldo atual</th>
+            <th class="px-4 py-2">Saldo inicial</th>
             <th class="px-4 py-2">Criada em</th>
             <th class="px-4 py-2"></th>
           </tr>
@@ -40,10 +40,10 @@
               <td class="px-4 py-2 text-gray-600">{{ accountTypeLabels[account.type] }}</td>
               <td
                 class="px-4 py-2 font-medium"
-                [class.text-red-600]="account.currentBalance < 0"
-                [class.text-green-600]="account.currentBalance >= 0"
+                [class.text-red-600]="account.balance < 0"
+                [class.text-gray-800]="account.balance >= 0"
               >
-                {{ account.currentBalance | currency: 'BRL' }}
+                {{ account.balance | currency: 'BRL' }}
               </td>
               <td class="px-4 py-2">{{ account.createdAt | date: 'dd/MM/yyyy' }}</td>
               <td class="px-4 py-2 text-right whitespace-nowrap">

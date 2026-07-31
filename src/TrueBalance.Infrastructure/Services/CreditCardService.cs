@@ -37,7 +37,9 @@ public class CreditCardService : ICreditCardService
             ClosingDay = dto.ClosingDay,
             DueDay = dto.DueDay,
             Limit = dto.Limit,
-            PaymentAccountId = dto.PaymentAccountId
+            PaymentAccountId = dto.PaymentAccountId,
+            Color = dto.Color,
+            Icon = dto.Icon
         };
 
         _context.CreditCards.Add(creditCard);
@@ -60,6 +62,8 @@ public class CreditCardService : ICreditCardService
         creditCard.DueDay = dto.DueDay;
         creditCard.Limit = dto.Limit;
         creditCard.PaymentAccountId = dto.PaymentAccountId;
+        creditCard.Color = dto.Color;
+        creditCard.Icon = dto.Icon;
 
         await _context.SaveChangesAsync();
 
@@ -82,5 +86,5 @@ public class CreditCardService : ICreditCardService
     }
 
     private static CreditCardDto MapToDto(CreditCard c) =>
-        new(c.Id, c.Name, c.ClosingDay, c.DueDay, c.Limit, c.PaymentAccountId);
+        new(c.Id, c.Name, c.ClosingDay, c.DueDay, c.Limit, c.PaymentAccountId, c.Color, c.Icon);
 }

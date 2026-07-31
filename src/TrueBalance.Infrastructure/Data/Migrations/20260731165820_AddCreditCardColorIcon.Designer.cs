@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TrueBalance.Infrastructure.Data;
@@ -11,9 +12,11 @@ using TrueBalance.Infrastructure.Data;
 namespace TrueBalance.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260731165820_AddCreditCardColorIcon")]
+    partial class AddCreditCardColorIcon
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -286,10 +289,6 @@ namespace TrueBalance.Infrastructure.Data.Migrations
                     b.Property<DateTime?>("PaidDate")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("paid_date");
-
-                    b.Property<DateTime?>("PurchaseDate")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("purchase_date");
 
                     b.Property<int?>("RecurrenceDay")
                         .HasColumnType("integer")

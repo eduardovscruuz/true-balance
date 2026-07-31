@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -24,9 +24,15 @@ export class CategoryForm implements OnInit {
   private readonly categoryId = signal<string | null>(null);
   readonly isEditMode = () => this.categoryId() !== null;
 
+  // Vindo da aba ativa na lista (?type=Expense|Income) — só faz sentido na CRIAÇÃO
+  // (clicar "Novo" já sabe se é despesa ou receita pela aba em que o usuário está).
+  // Em edição, o tipo pode ser mudado livremente, então o campo continua visível.
+  private readonly initialType = this.resolveInitialTypeFromQueryParam();
+  readonly isTypeImplicit = computed(() => !this.isEditMode() && this.initialType !== null);
+
   form = this.formBuilder.nonNullable.group({
     name: ['', Validators.required],
-    type: ['Expense' as CategoryType, Validators.required],
+    type: [this.initialType ?? ('Expense' as CategoryType), Validators.required],
     color: ['#3B82F6', Validators.required],
     icon: ['', Validators.required],
   });
@@ -72,5 +78,10 @@ export class CategoryForm implements OnInit {
     request$.subscribe(() => {
       this.router.navigate(['/categories']);
     });
+  }
+
+  private resolveInitialTypeFromQueryParam(): CategoryType | null {
+    const raw = this.route.snapshot.queryParamMap.get('type');
+    return raw === 'Expense' || raw === 'Income' ? raw : null;
   }
 }

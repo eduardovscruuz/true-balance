@@ -55,10 +55,19 @@ export class TransactionService {
   }
 
   // Uma fatura é paga ou não paga por inteiro — nunca "meio paga". Isso marca TODAS as
-  // transações daquele cartão que vencem naquele mês de uma vez só.
-  setInvoiceStatus(creditCardId: string, year: number, month: number, status: TransactionStatus): Observable<void> {
+  // transações daquele cartão que vencem naquele mês de uma vez só. paidDate é opcional
+  // (só usado ao marcar como Paga) — sem ele, o backend cai em hoje; informar explicita
+  // dá pra registrar um pagamento retroativo (ex: inserindo histórico).
+  setInvoiceStatus(
+    creditCardId: string,
+    year: number,
+    month: number,
+    status: TransactionStatus,
+    paidDate: string | null = null,
+  ): Observable<void> {
     return this.http.patch<void>(`${this.apiUrl}/credit-cards/${creditCardId}/invoices/${year}/${month}/status`, {
       status,
+      paidDate,
     });
   }
 }

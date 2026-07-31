@@ -6,6 +6,7 @@ import { RouterLink } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
 
 import { CreditCardService } from '../../../core/services/credit-card.service';
+import { resolveLucideIconName } from '../../../shared/utils/lucide-icon.util';
 
 @Component({
   selector: 'app-credit-card-list',
@@ -17,6 +18,10 @@ export class CreditCardList {
   private readonly creditCardService = inject(CreditCardService);
 
   private readonly refreshTrigger = signal(0);
+
+  // Cartões cadastrados antes do campo existir não têm cor/ícone — cai num cinza neutro.
+  readonly resolveIconName = (icon: string | null) => resolveLucideIconName(icon ?? '');
+  readonly cardColor = (color: string | null) => color ?? '#9CA3AF';
 
   creditCards = toSignal(
     toObservable(this.refreshTrigger).pipe(switchMap(() => this.creditCardService.getAll())),

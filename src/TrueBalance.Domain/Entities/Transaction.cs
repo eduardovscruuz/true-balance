@@ -39,6 +39,19 @@ public class Transaction
     public int? InstallmentNumber { get; set; }
     public int? TotalInstallments { get; set; }
 
+    // Data em que foi de fato PAGO — diferente de Date, que pra fatura de cartão é o
+    // VENCIMENTO (uma data de referência/agendamento), não quando o dinheiro realmente
+    // saiu da conta. Só é preenchida pelo botão "marcar fatura como Paga"
+    // (SetInvoiceStatusAsync); nula enquanto Pendente ou pra transações comuns, cujo Date
+    // já representa o dia real (não precisam desse campo separado).
+    public DateTime? PaidDate { get; set; }
+
+    // Data real da compra — diferente de Date, que pra cartão é o VENCIMENTO da fatura
+    // (calculado a partir desta + fechamento do cartão na criação), não o dia em que a
+    // compra aconteceu de fato. Só relevante pra compras de cartão; nula pra transações
+    // comuns (cujo Date já é o dia real) e pra itens de cartão criados antes desse campo existir.
+    public DateTime? PurchaseDate { get; set; }
+
     public Account? Account { get; set; }
     public CreditCard? CreditCard { get; set; }
     public Category Category { get; set; } = null!;

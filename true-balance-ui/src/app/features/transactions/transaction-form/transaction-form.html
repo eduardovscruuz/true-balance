@@ -30,7 +30,7 @@
       </div>
     }
 
-    <div>
+    <div class="relative">
       <label class="block text-sm font-medium text-gray-700 mb-1" for="description">
         Descrição <span class="text-red-500">*</span>
       </label>
@@ -38,6 +38,7 @@
         id="description"
         type="text"
         formControlName="description"
+        autocomplete="off"
         placeholder="ex: Salário, Mercado, Aluguel"
         class="w-full border rounded-md px-3 py-2 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
         [class.border-gray-300]="form.controls.description.valid || form.controls.description.untouched"
@@ -45,6 +46,34 @@
       />
       @if (form.controls.description.invalid && form.controls.description.touched) {
         <p class="text-xs text-red-600 mt-1">Descrição é obrigatória.</p>
+      }
+      @if (descriptionSuggestions().length > 0) {
+        <ul class="absolute z-10 left-0 right-0 mt-1 border border-gray-200 rounded-md shadow-lg bg-white divide-y divide-gray-100 overflow-hidden">
+          @for (suggestion of descriptionSuggestions(); track suggestion.description) {
+            <li>
+              <button
+                type="button"
+                (click)="applySuggestion(suggestion)"
+                class="w-full flex items-center gap-2 text-left px-3 py-2 hover:bg-gray-50 transition"
+              >
+                @if (suggestion.categoryColor) {
+                  <span
+                    class="flex items-center justify-center w-7 h-7 rounded-full shrink-0"
+                    [style.background-color]="suggestion.categoryColor"
+                  >
+                    <lucide-icon [name]="resolveIconName(suggestion.categoryIcon ?? '')" [size]="14" color="white"></lucide-icon>
+                  </span>
+                }
+                <span>
+                  <span class="text-sm font-medium text-gray-800">{{ suggestion.description }}</span>
+                  <span class="block text-xs text-gray-400">
+                    {{ suggestion.categoryName }} · {{ suggestion.accountLabel }}
+                  </span>
+                </span>
+              </button>
+            </li>
+          }
+        </ul>
       }
     </div>
 
@@ -147,16 +176,47 @@
       @if (installmentRangeInvalid()) {
         <p class="text-xs text-red-600 mt-1">A parcela atual não pode ser maior que o total de parcelas.</p>
       }
+
+      @if (!isEditMode()) {
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Como você quer informar o valor?</label>
+          <div class="grid grid-cols-2 gap-2">
+            <label
+              class="flex items-center justify-center gap-2 border rounded-md px-3 py-2 cursor-pointer transition"
+              [class.border-blue-500]="form.controls.amountInputMode.value === 'total'"
+              [class.bg-blue-50]="form.controls.amountInputMode.value === 'total'"
+              [class.text-blue-700]="form.controls.amountInputMode.value === 'total'"
+              [class.border-gray-300]="form.controls.amountInputMode.value !== 'total'"
+            >
+              <input type="radio" formControlName="amountInputMode" value="total" class="sr-only" />
+              Valor total
+            </label>
+            <label
+              class="flex items-center justify-center gap-2 border rounded-md px-3 py-2 cursor-pointer transition"
+              [class.border-blue-500]="form.controls.amountInputMode.value === 'perInstallment'"
+              [class.bg-blue-50]="form.controls.amountInputMode.value === 'perInstallment'"
+              [class.text-blue-700]="form.controls.amountInputMode.value === 'perInstallment'"
+              [class.border-gray-300]="form.controls.amountInputMode.value !== 'perInstallment'"
+            >
+              <input type="radio" formControlName="amountInputMode" value="perInstallment" class="sr-only" />
+              Valor da parcela
+            </label>
+          </div>
+          <p class="text-xs text-gray-400 mt-1">
+            @if (form.controls.amountInputMode.value === 'perInstallment') {
+              Informe o valor de UMA parcela — o sistema usa esse valor direto, sem dividir, gerando
+              as próximas nos meses seguintes com o mesmo valor.
+            } @else {
+              Informe o valor TOTAL da compra — o sistema calcula e salva o valor de cada parcela
+              automaticamente, gerando as próximas nos meses seguintes até chegar no total informado.
+            }
+          </p>
+        </div>
+      }
+
       @if (installmentAmountPreview() !== null) {
         <p class="text-xs text-gray-500 mt-1">
-          Cada parcela será de {{ installmentAmountPreview() | currency: 'BRL' }}
-        </p>
-      }
-      @if (!isEditMode()) {
-        <p class="text-xs text-gray-400 mt-1">
-          Informe o valor TOTAL da compra no campo "Valor total" abaixo — o sistema calcula e salva
-          o valor de cada parcela automaticamente, gerando as próximas nos meses seguintes até
-          chegar no total informado.
+          {{ installmentAmountPreviewLabel() }} {{ installmentAmountPreview() | currency: 'BRL' }}
         </p>
       }
     }
@@ -284,48 +344,93 @@
         <label class="block text-sm font-medium text-gray-700 mb-1" for="date">
           {{ isCreditCardMode() ? 'Data da Compra' : 'Data' }}
         </label>
-        <input
-          id="date"
-          type="date"
-          formControlName="date"
-          class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        @if (creditCardDueDatePreview(); as dueDate) {
-          <p class="text-xs text-gray-400 mt-1">
-            Cai na fatura com vencimento em {{ dueDate | date: 'dd/MM/yyyy' : 'UTC' }} — é essa data que fica
-            registrada na transação.
-          </p>
+        @if (isCreditCardMode() && isEditMode()) {
+          <input
+            id="date"
+            type="date"
+            formControlName="purchaseDate"
+            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        } @else {
+          <input
+            id="date"
+            type="date"
+            formControlName="date"
+            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          @if (creditCardDueDatePreview(); as dueDate) {
+            <p class="text-xs text-gray-400 mt-1">
+              Cai na fatura com vencimento em {{ dueDate | date: 'dd/MM/yyyy' : 'UTC' }} — é essa data que fica
+              registrada na transação.
+            </p>
+          }
         }
       </div>
 
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1" for="status">Status</label>
-        <select
-          id="status"
-          formControlName="status"
-          class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
-        >
-          <option value="Paid">Pago</option>
-          <option value="Pending">Pendente</option>
-        </select>
-        @if (creditCardInvoiceStillOpen()) {
+        @if (isCreditCardMode()) {
+          <span
+            class="inline-flex w-full items-center justify-center px-3 py-2 rounded-md text-sm font-medium border"
+            [class.bg-amber-50]="statusValue() === 'Pending'"
+            [class.text-amber-700]="statusValue() === 'Pending'"
+            [class.border-amber-200]="statusValue() === 'Pending'"
+            [class.bg-green-50]="statusValue() === 'Paid'"
+            [class.text-green-700]="statusValue() === 'Paid'"
+            [class.border-green-200]="statusValue() === 'Paid'"
+          >
+            {{ statusValue() === 'Paid' ? 'Pago' : 'Pendente' }}
+          </span>
           <p class="text-xs text-gray-400 mt-1">
-            A fatura deste mês ainda não fechou — essa compra cai na próxima, que ainda não pode estar paga.
+            @if (creditCardInvoiceStillOpen()) {
+              A fatura deste mês ainda não fechou — essa compra cai na próxima, que ainda não pode estar paga.
+            } @else {
+              Definido em bloco pra fatura inteira na tela "Fatura do Cartão", não por compra individual.
+            }
           </p>
+        } @else {
+          <select
+            id="status"
+            formControlName="status"
+            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="Paid">Pago</option>
+            <option value="Pending">Pendente</option>
+          </select>
         }
       </div>
     </div>
 
-    <div class="flex gap-2 pt-2">
-      <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">
-        Salvar
-      </button>
-      <a
-        routerLink="/transactions"
-        class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
-      >
-        Cancelar
-      </a>
-    </div>
+    @if (isCreditCardMode() && !isEditMode()) {
+      <div class="flex items-center justify-between pt-2">
+        <a routerLink="/transactions" class="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 transition">
+          Cancelar
+        </a>
+        <div class="flex gap-2">
+          <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">
+            Salvar
+          </button>
+          <button
+            type="button"
+            (click)="saveAndCreateAnother()"
+            class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition"
+          >
+            Salvar e criar outro
+          </button>
+        </div>
+      </div>
+    } @else {
+      <div class="flex gap-2 pt-2">
+        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">
+          Salvar
+        </button>
+        <a
+          routerLink="/transactions"
+          class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
+        >
+          Cancelar
+        </a>
+      </div>
+    }
   </form>
 </div>

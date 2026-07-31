@@ -3,21 +3,46 @@
     <h1 class="text-2xl font-bold text-gray-800">Categorias</h1>
     <a
       routerLink="/categories/new"
+      [queryParams]="{ type: activeTab() }"
       class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition"
     >
       Novo
     </a>
   </div>
 
-  @if (categories(); as categoryList) {
+  <div class="flex gap-2 mb-4">
+    <button
+      type="button"
+      (click)="setTab('Expense')"
+      class="px-4 py-2 rounded-md text-sm font-medium transition"
+      [class.bg-red-100]="activeTab() === 'Expense'"
+      [class.text-red-700]="activeTab() === 'Expense'"
+      [class.text-gray-500]="activeTab() !== 'Expense'"
+      [class.hover:bg-gray-100]="activeTab() !== 'Expense'"
+    >
+      Despesa
+    </button>
+    <button
+      type="button"
+      (click)="setTab('Income')"
+      class="px-4 py-2 rounded-md text-sm font-medium transition"
+      [class.bg-green-100]="activeTab() === 'Income'"
+      [class.text-green-700]="activeTab() === 'Income'"
+      [class.text-gray-500]="activeTab() !== 'Income'"
+      [class.hover:bg-gray-100]="activeTab() !== 'Income'"
+    >
+      Receita
+    </button>
+  </div>
+
+  @if (filteredCategories(); as categoryList) {
     @if (categoryList.length === 0) {
-      <p class="text-gray-500">Nenhuma categoria cadastrada.</p>
+      <p class="text-gray-500">Nenhuma categoria de {{ activeTab() === 'Expense' ? 'despesa' : 'receita' }} cadastrada.</p>
     } @else {
       <table class="w-full border-collapse bg-white shadow-sm rounded-lg overflow-hidden">
         <thead class="bg-gray-100 text-left text-sm text-gray-600">
           <tr>
             <th class="px-4 py-2">Categoria</th>
-            <th class="px-4 py-2">Tipo</th>
             <th class="px-4 py-2"></th>
           </tr>
         </thead>
@@ -34,17 +59,6 @@
                   </span>
                   <span class="text-gray-800">{{ category.name }}</span>
                 </div>
-              </td>
-              <td class="px-4 py-2">
-                <span
-                  class="px-2 py-0.5 rounded-full text-xs font-medium"
-                  [class.bg-red-100]="category.type === 'Expense'"
-                  [class.text-red-700]="category.type === 'Expense'"
-                  [class.bg-green-100]="category.type === 'Income'"
-                  [class.text-green-700]="category.type === 'Income'"
-                >
-                  {{ category.type }}
-                </span>
               </td>
               <td class="px-4 py-2 text-right whitespace-nowrap">
                 <a

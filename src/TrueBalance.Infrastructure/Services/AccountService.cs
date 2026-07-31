@@ -92,17 +92,27 @@ public class AccountService : IAccountService
     }
 
     // Saldo atual = saldo inicial + soma das transações PAGAS da conta (receita soma, despesa
-    // e transferência subtraem — mesma convenção já usada pelo SnapshotService na Fase 6).
+    // e transferência subtraem — mesma convenção já usada pelo SnapshotService na Fase 6) +
+    // soma das transações PAGAS dos cartões cuja "Conta de Pagamento" é esta conta. Uma
+    // fatura de cartão só afeta o saldo REAL quando ela já foi paga — antes disso é só uma
+    // dívida, não dinheiro que já saiu da conta (a projeção no Dashboard já conta as
+    // pendentes também, mas essa é uma previsão, não o saldo atual de verdade).
     private async Task<decimal> GetPaidDeltaAsync(Guid accountId)
     {
-        return await _context.Transactions
+        var directDelta = await _context.Transactions
             .Where(t => t.AccountId == accountId && t.Status == TransactionStatus.Paid)
             .SumAsync(t => (decimal?)(t.Type == TransactionType.Income ? t.Amount : -t.Amount)) ?? 0m;
+
+        var cardDelta = await _context.Transactions
+            .Where(t => t.CreditCardId != null && t.Status == TransactionStatus.Paid && t.CreditCard!.PaymentAccountId == accountId)
+            .SumAsync(t => (decimal?)(t.Type == TransactionType.Income ? t.Amount : -t.Amount)) ?? 0m;
+
+        return directDelta + cardDelta;
     }
 
     private async Task<Dictionary<Guid, decimal>> GetPaidDeltasByAccountAsync()
     {
-        return await _context.Transactions
+        var directDeltas = await _context.Transactions
             .Where(t => t.AccountId != null && t.Status == TransactionStatus.Paid)
             .GroupBy(t => t.AccountId!.Value)
             .Select(g => new
@@ -110,7 +120,31 @@ public class AccountService : IAccountService
                 AccountId = g.Key,
                 Delta = g.Sum(t => t.Type == TransactionType.Income ? t.Amount : -t.Amount)
             })
-            .ToDictionaryAsync(x => x.AccountId, x => x.Delta);
+            .ToListAsync();
+
+        var cardDeltas = await _context.Transactions
+            .Where(t => t.CreditCardId != null && t.Status == TransactionStatus.Paid && t.CreditCard!.PaymentAccountId != null)
+            .GroupBy(t => t.CreditCard!.PaymentAccountId!.Value)
+            .Select(g => new
+            {
+                AccountId = g.Key,
+                Delta = g.Sum(t => t.Type == TransactionType.Income ? t.Amount : -t.Amount)
+            })
+            .ToListAsync();
+
+        var result = new Dictionary<Guid, decimal>();
+
+        foreach (var d in directDeltas)
+        {
+            result[d.AccountId] = result.GetValueOrDefault(d.AccountId) + d.Delta;
+        }
+
+        foreach (var d in cardDeltas)
+        {
+            result[d.AccountId] = result.GetValueOrDefault(d.AccountId) + d.Delta;
+        }
+
+        return result;
     }
 
     private static AccountDto MapToDto(Account account, decimal delta) => new(

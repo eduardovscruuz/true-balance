@@ -19,6 +19,15 @@ export interface Transaction {
   recurrenceEndDate: string | null;
   installmentNumber: number | null;
   totalInstallments: number | null;
+  // Quando foi realmente pago — diferente de Date, que pra fatura de cartão é o
+  // vencimento, não o dia real do pagamento. Preenchida só pelo botão "marcar fatura
+  // como Paga" (ver CreditCardInvoice), nunca editável direto numa transação — pagar é
+  // um fato da fatura inteira, não de uma compra isolada.
+  paidDate: string | null;
+  // Dia real da compra — diferente de Date, que pra cartão é o vencimento da fatura.
+  // Só existe pra compras de cartão; nula pra transações comuns (cujo Date já é o dia
+  // real) e pra itens de cartão criados antes desse campo existir.
+  purchaseDate: string | null;
 }
 
 export interface CreateTransaction {
@@ -38,4 +47,6 @@ export interface CreateTransaction {
   recurrenceEndDate: string | null;
   installmentNumber: number | null;
   totalInstallments: number | null;
+  paidDate: string | null;
+  purchaseDate: string | null;
 }

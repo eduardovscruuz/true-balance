@@ -10,10 +10,12 @@ namespace TrueBalance.Infrastructure.Services;
 public class TransactionService : ITransactionService
 {
     private readonly AppDbContext _context;
+    private readonly IProjectionService _projectionService;
 
-    public TransactionService(AppDbContext context)
+    public TransactionService(AppDbContext context, IProjectionService projectionService)
     {
         _context = context;
+        _projectionService = projectionService;
     }
 
     public async Task<IEnumerable<TransactionDto>> GetAllAsync()
@@ -55,29 +57,16 @@ public class TransactionService : ITransactionService
 
     public async Task<TransactionDto> AddAsync(CreateTransactionDto dto)
     {
-        var transaction = new Transaction
-        {
-            Id = Guid.NewGuid(),
-            AccountId = dto.AccountId,
-            CreditCardId = dto.CreditCardId,
-            CategoryId = dto.CategoryId,
-            SubcategoryId = dto.SubcategoryId,
-            Type = dto.Type,
-            Status = dto.Status,
-            Amount = dto.Amount,
-            Description = dto.Description,
-            Date = NormalizeToUtc(dto.Date),
-            IsFixed = dto.IsFixed,
-            InstallmentInfo = dto.InstallmentInfo,
-            RecurrenceGroupId = dto.RecurrenceGroupId,
-            RecurrenceDay = dto.RecurrenceDay,
-            RecurrenceEndDate = NormalizeToUtc(dto.RecurrenceEndDate),
-            InstallmentNumber = dto.InstallmentNumber,
-            TotalInstallments = dto.TotalInstallments
-        };
+        // Reaproveita ApplyDto (usado por Update/UpdateSeries também) em vez de duplicar
+        // a lista de campos aqui — evita o tipo de bug em que um campo novo (ex: PaidDate)
+        // é adicionado num lugar só e fica esquecido no outro.
+        var transaction = new Transaction { Id = Guid.NewGuid() };
+        ApplyDto(transaction, dto);
 
         _context.Transactions.Add(transaction);
         await _context.SaveChangesAsync();
+
+        await ProjectIfRecurringAsync(dto);
 
         return MapToDto(transaction);
     }
@@ -93,6 +82,8 @@ public class TransactionService : ITransactionService
 
         ApplyDto(transaction, dto);
         await _context.SaveChangesAsync();
+
+        await ProjectIfRecurringAsync(dto);
 
         return MapToDto(transaction);
     }
@@ -139,6 +130,8 @@ public class TransactionService : ITransactionService
         }
 
         await _context.SaveChangesAsync();
+
+        await ProjectIfRecurringAsync(dto);
 
         return MapToDto(transaction);
     }
@@ -201,20 +194,43 @@ public class TransactionService : ITransactionService
     // Uma fatura de cartão é um fato único: paga ou não, nunca "meio paga" — então marcar
     // como Paga/Pendente atualiza TODAS as transações daquele cartão que caem naquele mês
     // (o mesmo mês em que a fatura vence, já que é isso que fica salvo em Date), de uma vez.
-    public async Task<int> SetInvoiceStatusAsync(Guid creditCardId, int year, int month, TransactionStatus status)
+    // Marcar como Paga também registra PaidDate = hoje — Date continua sendo o VENCIMENTO
+    // (útil pra saber de qual fatura é), mas PaidDate é quando o dinheiro realmente saiu,
+    // que pode ser antes ou depois do vencimento (ex: pagou adiantado).
+    public async Task<int> SetInvoiceStatusAsync(Guid creditCardId, int year, int month, TransactionStatus status, DateTime? paidDate)
     {
         var transactions = await _context.Transactions
             .Where(t => t.CreditCardId == creditCardId && t.Date.Year == year && t.Date.Month == month)
             .ToListAsync();
 
+        // Sem data informada (ex: chamada antiga), cai em hoje — mas o normal é vir
+        // explícita, pra dar pra registrar um pagamento retroativo (ex: histórico).
+        var resolvedPaidDate = status == TransactionStatus.Paid
+            ? NormalizeToUtc(paidDate ?? DateTime.UtcNow.Date)
+            : (DateTime?)null;
+
         foreach (var transaction in transactions)
         {
             transaction.Status = status;
+            transaction.PaidDate = resolvedPaidDate;
         }
 
         await _context.SaveChangesAsync();
 
         return transactions.Count;
+    }
+
+    // O worker de projeção (FixedExpenseProjectionWorker) só roda na inicialização da API
+    // e depois a cada 24h — sem isso aqui, uma despesa fixa/parcelada recém-criada ou
+    // editada só apareceria nos meses seguintes até 24h depois, não imediatamente. Chama
+    // a projeção completa (não só desta transação) pra também recuperar qualquer atraso
+    // natural do relógio desde a última execução do worker.
+    private async Task ProjectIfRecurringAsync(CreateTransactionDto dto)
+    {
+        if (dto.IsFixed || dto.TotalInstallments.HasValue)
+        {
+            await _projectionService.ProjectFixedExpensesAsync(CancellationToken.None);
+        }
     }
 
     private static void ApplyDto(Transaction transaction, CreateTransactionDto dto)
@@ -235,6 +251,14 @@ public class TransactionService : ITransactionService
         transaction.RecurrenceEndDate = NormalizeToUtc(dto.RecurrenceEndDate);
         transaction.InstallmentNumber = dto.InstallmentNumber;
         transaction.TotalInstallments = dto.TotalInstallments;
+        // PaidDate só faz sentido pra fatura de cartão (janela entre compra e vencimento
+        // em que o pagamento pode acontecer) — numa transação comum, Date já É o dia em
+        // que foi paga, então guardar os dois seria uma informação redundante/duplicada.
+        transaction.PaidDate = dto.CreditCardId is null ? null : NormalizeToUtc(dto.PaidDate);
+        // PurchaseDate (dia real da compra) também só existe pra cartão — Date, nesse
+        // caso, guarda o VENCIMENTO da fatura (calculado a partir da compra + fechamento
+        // do cartão), não o dia da compra em si.
+        transaction.PurchaseDate = dto.CreditCardId is null ? null : NormalizeToUtc(dto.PurchaseDate);
     }
 
     // Npgsql exige DateTime.Kind = Utc para colunas "timestamp with time zone" — se o cliente
@@ -263,5 +287,7 @@ public class TransactionService : ITransactionService
         t.RecurrenceDay,
         t.RecurrenceEndDate,
         t.InstallmentNumber,
-        t.TotalInstallments);
+        t.TotalInstallments,
+        t.PaidDate,
+        t.PurchaseDate);
 }

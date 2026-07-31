@@ -11,10 +11,25 @@ import { CategoryService } from '../../../core/services/category.service';
 import { CreditCardService } from '../../../core/services/credit-card.service';
 import { SubcategoryService } from '../../../core/services/subcategory.service';
 import { TransactionService } from '../../../core/services/transaction.service';
+import { resolveLucideIconName } from '../../../shared/utils/lucide-icon.util';
+import { LucideAngularModule } from 'lucide-angular';
+
+interface DescriptionSuggestion {
+  description: string;
+  categoryId: string;
+  categoryName: string;
+  categoryColor: string | null;
+  categoryIcon: string | null;
+  subcategoryId: string | null;
+  accountId: string | null;
+  creditCardId: string | null;
+  // "Cartão {nome}" quando é cartão, só o nome quando é conta — sem ícone, só texto.
+  accountLabel: string;
+}
 
 @Component({
   selector: 'app-transaction-form',
-  imports: [ReactiveFormsModule, RouterLink, CurrencyMaskDirective, CurrencyPipe, DatePipe],
+  imports: [ReactiveFormsModule, RouterLink, CurrencyMaskDirective, CurrencyPipe, DatePipe, LucideAngularModule],
   templateUrl: './transaction-form.html',
   styleUrl: './transaction-form.scss',
 })
@@ -32,6 +47,9 @@ export class TransactionForm implements OnInit {
   readonly accounts = toSignal(this.accountService.getAll(), { initialValue: [] });
   readonly creditCards = toSignal(this.creditCardService.getAll(), { initialValue: [] });
   private readonly subcategories = toSignal(this.subcategoryService.getAll(), { initialValue: [] });
+  // Histórico completo, só pra alimentar as sugestões de autocompletar (ver
+  // descriptionSuggestions) — nada aqui filtra por mês, precisa de tudo.
+  private readonly allTransactions = toSignal(this.transactionService.getAll(), { initialValue: [] });
 
   private readonly transactionId = signal<string | null>(null);
   readonly isEditMode = () => this.transactionId() !== null;
@@ -39,6 +57,12 @@ export class TransactionForm implements OnInit {
   // Preserva o RecurrenceGroupId original ao editar uma transação que já era fixa —
   // ver comentário completo em onSubmit().
   private originalRecurrenceGroupId: string | null = null;
+
+  // PaidDate não é editável neste formulário (só a tela de Fatura pode setar isso) —
+  // preserva o valor já salvo pra reenviar sem alterar, já que ApplyDto sobrescreve
+  // com o que vier no dto (sem isso, editar uma compra de cartão já paga apagaria
+  // silenciosamente a data de pagamento da fatura inteira).
+  private loadedPaidDateIso: string | null = null;
 
   // Vindo dos botões "Nova Despesa"/"Nova Receita" da lista (?type=Expense|Income).
   // Quando presente, o tipo já chega implícito e não precisa ser escolhido no formulário.
@@ -89,7 +113,14 @@ export class TransactionForm implements OnInit {
     amount: this.formBuilder.control<number | null>(null, Validators.required),
     description: this.formBuilder.nonNullable.control('', Validators.required),
     date: this.formBuilder.nonNullable.control(this.todayAsInputValue(), Validators.required),
-    status: this.formBuilder.nonNullable.control<TransactionStatus>('Paid', Validators.required),
+    // Só relevante em EDIÇÃO de compra de cartão — a data real da compra, independente
+    // do vencimento da fatura (guardado em "date", nunca reprocessado aqui). Na criação,
+    // o campo "Data da Compra" da tela usa "date" mesmo (ver onSubmit).
+    purchaseDate: this.formBuilder.control<string | null>(null),
+    // Pendente por padrão. Pra compra de cartão, Status nem fica editável aqui — só
+    // muda em bloco pela tela de Fatura (marcar fatura inteira como Paga/Pendente),
+    // nunca por compra individual (ver efeito abaixo).
+    status: this.formBuilder.nonNullable.control<TransactionStatus>('Pending', Validators.required),
     isFixed: this.formBuilder.nonNullable.control(false),
     // Dia do mês (1-31) em que a recorrência deveria cair — independente do dia real
     // desta ocorrência específica (ex: salário recorre sempre dia 31, mesmo que uma
@@ -103,6 +134,11 @@ export class TransactionForm implements OnInit {
     isInstallment: this.formBuilder.nonNullable.control(false),
     installmentNumber: this.formBuilder.control<number | null>(null),
     totalInstallments: this.formBuilder.control<number | null>(null),
+    // Só relevante na CRIAÇÃO de uma compra parcelada — decide se o campo Valor abaixo
+    // representa o total da compra (sistema divide pelas parcelas) ou já o valor de UMA
+    // parcela (sistema usa direto, sem dividir). Útil quando você já sabe o valor exato
+    // da parcela (ex: fatura anterior já mostrou 33,27) e não quer fazer a conta de cabeça.
+    amountInputMode: this.formBuilder.nonNullable.control<'total' | 'perInstallment'>('total'),
   });
 
   private readonly selectedType = toSignal(this.form.controls.type.valueChanges, {
@@ -138,26 +174,46 @@ export class TransactionForm implements OnInit {
     initialValue: this.form.controls.amount.value,
   });
 
-  // Quando parcelado, o campo Valor representa o TOTAL da compra (ex: 20 mil em 20x) só na
-  // CRIAÇÃO — mais intuitivo digitar o total do que calcular de cabeça o valor de cada
-  // parcela. O que é salvo por transação é o valor dividido (ver onSubmit); esse preview
-  // só mostra a conta pro usuário conferir visualmente. Em EDIÇÃO, a parcela já existe com
-  // seu próprio valor guardado — Valor edita diretamente essa parcela (ex: reajuste da
-  // mensalidade), não um total reconstruído, então não faz sentido nem mostrar "total".
-  readonly amountLabel = computed(() =>
-    this.isInstallmentValue() && !this.isEditMode() ? 'Valor total' : 'Valor',
-  );
+  private readonly amountInputModeValue = toSignal(this.form.controls.amountInputMode.valueChanges, {
+    initialValue: this.form.controls.amountInputMode.value,
+  });
 
+  // Quando parcelado NA CRIAÇÃO, o campo Valor pode representar o TOTAL da compra (padrão
+  // — mais intuitivo quando você sabe o total, ex: 20 mil em 20x) ou já o valor de UMA
+  // parcela (ver amountInputMode) — quando você já sabe exatamente quanto é a parcela (ex:
+  // uma fatura anterior já mostrou o valor) e não quer calcular o total de cabeça. Em
+  // EDIÇÃO, a parcela já existe com seu próprio valor guardado — Valor edita diretamente
+  // essa parcela (ex: reajuste da mensalidade), não um total reconstruído, então nenhuma
+  // das duas opções faz sentido, só "Valor" mesmo.
+  readonly amountLabel = computed(() => {
+    if (this.isEditMode() || !this.isInstallmentValue()) {
+      return 'Valor';
+    }
+
+    return this.amountInputModeValue() === 'perInstallment' ? 'Valor da parcela' : 'Valor total';
+  });
+
+  // Dica visual espelhando o que foi digitado: se o campo é o total, mostra quanto fica
+  // cada parcela; se o campo já é a parcela, mostra quanto fica o total — sempre a conta
+  // que o usuário NÃO digitou diretamente.
   readonly installmentAmountPreview = computed(() => {
     if (!this.isInstallmentValue() || this.isEditMode()) {
       return null;
     }
 
-    const total = this.amountValue();
+    const amount = this.amountValue();
     const count = this.totalInstallmentsValue();
 
-    return total !== null && count !== null && count > 0 ? total / count : null;
+    if (amount === null || count === null || count <= 0) {
+      return null;
+    }
+
+    return this.amountInputModeValue() === 'perInstallment' ? amount * count : amount / count;
   });
+
+  readonly installmentAmountPreviewLabel = computed(() =>
+    this.amountInputModeValue() === 'perInstallment' ? 'O valor total será de' : 'Cada parcela será de',
+  );
 
   private readonly recurrenceEndDateValue = toSignal(this.form.controls.recurrenceEndDate.valueChanges, {
     initialValue: this.form.controls.recurrenceEndDate.value,
@@ -182,6 +238,10 @@ export class TransactionForm implements OnInit {
 
   private readonly selectedCreditCardId = toSignal(this.form.controls.creditCardId.valueChanges, {
     initialValue: this.form.controls.creditCardId.value,
+  });
+
+  readonly statusValue = toSignal(this.form.controls.status.valueChanges, {
+    initialValue: this.form.controls.status.value,
   });
 
   // Uma compra no cartão pertence à fatura que fecha DEPOIS dela — se o dia da compra é
@@ -211,7 +271,21 @@ export class TransactionForm implements OnInit {
       return { closingDate, dueDate: new Date(Date.UTC(year, month - 1, day)) };
     }
 
-    return this.computeCreditCardInvoice(year, month, day, creditCard.closingDay, creditCard.dueDay);
+    // Registrar diretamente a parcela N de uma compra parcelada (ex: já vinha pagando em
+    // outro controle e só passou a registrar a partir da 4ª parcela) precisa deslocar a
+    // fatura pra frente pelas parcelas que já "venceram" antes desta — sem isso, o sistema
+    // sempre calcula a fatura como se essa fosse a 1ª parcela da compra.
+    const installmentMonthOffset =
+      this.isInstallmentValue() && this.installmentNumberValue() ? this.installmentNumberValue()! - 1 : 0;
+
+    return this.computeCreditCardInvoice(
+      year,
+      month,
+      day,
+      creditCard.closingDay,
+      creditCard.dueDay,
+      installmentMonthOffset,
+    );
   });
 
   // Trava o Status em Pendente enquanto a fatura em que a compra cai ainda não fechou —
@@ -252,6 +326,102 @@ export class TransactionForm implements OnInit {
   );
 
   readonly hasSubcategories = computed(() => this.filteredSubcategories().length > 0);
+
+  private readonly descriptionValue = toSignal(this.form.controls.description.valueChanges, {
+    initialValue: this.form.controls.description.value,
+  });
+
+  // Marca a sugestão que acabou de ser aceita — enquanto a Descrição continuar
+  // exatamente igual a ela, não faz sentido reoferecer a mesma sugestão de novo.
+  // Volta a null assim que o usuário digitar qualquer coisa diferente disso.
+  private readonly lastAppliedSuggestionDescription = signal<string | null>(null);
+
+  // Sugere preencher Categoria/Subcategoria/Conta ou Cartão a partir do próprio
+  // histórico — ex: toda vez que você lança "Gasolina", é sempre a mesma categoria e a
+  // mesma conta, só o valor muda. Nunca sugere Valor nem Data (isso sim varia de vez em
+  // vez). Só na CRIAÇÃO — em edição a transação já tem os campos preenchidos.
+  readonly descriptionSuggestions = computed<DescriptionSuggestion[]>(() => {
+    if (this.isEditMode()) {
+      return [];
+    }
+
+    const typed = this.descriptionValue().trim();
+
+    if (typed.length < 2 || typed === this.lastAppliedSuggestionDescription()) {
+      return [];
+    }
+
+    const type = this.selectedType();
+    const cardMode = this.isCreditCardMode();
+    const search = typed.toLowerCase();
+
+    const matches = this.allTransactions().filter((t) => {
+      if (t.type !== type) {
+        return false;
+      }
+
+      if (cardMode ? t.creditCardId === null : t.accountId === null) {
+        return false;
+      }
+
+      return t.description.toLowerCase().includes(search);
+    });
+
+    // Uma sugestão por descrição única — a ocorrência mais RECENTE de cada uma é quem
+    // representa a categoria/conta "atual" (a mais provável de ainda valer hoje).
+    const mostRecentByDescription = new Map<string, (typeof matches)[number]>();
+
+    for (const transaction of matches) {
+      const key = transaction.description.toLowerCase();
+      const existing = mostRecentByDescription.get(key);
+
+      if (!existing || transaction.date > existing.date) {
+        mostRecentByDescription.set(key, transaction);
+      }
+    }
+
+    const categoryById = new Map(this.categories().map((c) => [c.id, c]));
+    const subcategoryById = new Map(this.subcategories().map((s) => [s.id, s]));
+    const accountById = new Map(this.accounts().map((a) => [a.id, a]));
+    const creditCardById = new Map(this.creditCards().map((c) => [c.id, c]));
+
+    return [...mostRecentByDescription.values()]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 5)
+      .map((transaction) => {
+        const category = categoryById.get(transaction.categoryId);
+        const subcategory = transaction.subcategoryId ? subcategoryById.get(transaction.subcategoryId) : undefined;
+        const accountLabel = cardMode
+          ? `Cartão ${creditCardById.get(transaction.creditCardId!)?.name ?? '—'}`
+          : (accountById.get(transaction.accountId!)?.name ?? '—');
+
+        return {
+          description: transaction.description,
+          categoryId: transaction.categoryId,
+          categoryName: subcategory?.name ?? category?.name ?? '—',
+          categoryColor: category?.color ?? null,
+          categoryIcon: category?.icon ?? null,
+          subcategoryId: transaction.subcategoryId,
+          accountId: transaction.accountId,
+          creditCardId: transaction.creditCardId,
+          accountLabel,
+        };
+      });
+  });
+
+  readonly resolveIconName = resolveLucideIconName;
+
+  applySuggestion(suggestion: DescriptionSuggestion): void {
+    this.form.patchValue({
+      description: suggestion.description,
+      categoryId: suggestion.categoryId,
+      subcategoryId: suggestion.subcategoryId ?? '',
+      accountId: suggestion.accountId ?? '',
+      creditCardId: suggestion.creditCardId ?? '',
+    });
+
+    this.lastAppliedSuggestionDescription.set(suggestion.description);
+  }
 
   constructor() {
     // Reseta a categoria só quando ela deixa de pertencer ao tipo atual — não a cada
@@ -383,16 +553,14 @@ export class TransactionForm implements OnInit {
       creditCardControl.updateValueAndValidity({ emitEvent: false });
     });
 
-    // Enquanto a fatura do cartão ainda não fechou, o Status é travado em Pendente —
-    // não dá pra ter pago algo que ainda nem foi cobrado. Assim que a fatura fecha (ou
-    // se não for uma compra de cartão), o campo volta a ficar livre pro usuário escolher.
+    // Status de compra de cartão nunca é editável por transação individual — só muda em
+    // bloco pela tela de Fatura (ver credit-card-invoice), que já mantém a fatura inteira
+    // atômica (paga ou não, nunca "meio paga"). Editar isso aqui, item por item, quebraria
+    // essa garantia. Pra transação comum, Status continua livre, como sempre foi.
     effect(() => {
-      const invoiceStillOpen = this.creditCardInvoiceStillOpen();
       const control = this.form.controls.status;
 
-      if (invoiceStillOpen) {
-        control.setValue('Pending', { emitEvent: false });
-
+      if (this.isCreditCardMode()) {
         if (control.enabled) {
           control.disable({ emitEvent: false });
         }
@@ -413,6 +581,7 @@ export class TransactionForm implements OnInit {
 
     this.transactionService.getById(id).subscribe((transaction) => {
       this.originalRecurrenceGroupId = transaction.recurrenceGroupId;
+      this.loadedPaidDateIso = transaction.paidDate;
 
       const isInstallment = transaction.installmentNumber !== null && transaction.totalInstallments !== null;
 
@@ -427,6 +596,13 @@ export class TransactionForm implements OnInit {
         amount: transaction.amount,
         description: transaction.description,
         date: this.isoToInputValue(transaction.date),
+        // Fallback pro vencimento em itens de cartão criados antes desse campo existir —
+        // não é o dia real da compra, mas é a melhor aproximação disponível pra eles.
+        purchaseDate: transaction.purchaseDate
+          ? this.isoToInputValue(transaction.purchaseDate)
+          : transaction.creditCardId
+            ? this.isoToInputValue(transaction.date)
+            : null,
         status: transaction.status,
         isFixed: transaction.isFixed,
         recurrenceDay: transaction.recurrenceDay,
@@ -442,7 +618,14 @@ export class TransactionForm implements OnInit {
     });
   }
 
-  onSubmit(): void {
+  // "Salvar e criar outro" só faz sentido na CRIAÇÃO (nunca em edição) — pensado pro
+  // fluxo de lançar várias compras da mesma fatura em sequência, sem sair do formulário
+  // a cada uma. Mantém Cartão/Conta/Tipo (o contexto do lote) e limpa o resto.
+  saveAndCreateAnother(): void {
+    this.onSubmit('createAnother');
+  }
+
+  onSubmit(afterSave: 'navigate' | 'createAnother' = 'navigate'): void {
     if (this.form.invalid || this.installmentRangeInvalid() || this.recurrenceEndDateInvalid()) {
       this.form.markAllAsTouched();
       return;
@@ -457,6 +640,7 @@ export class TransactionForm implements OnInit {
       amount,
       description,
       date,
+      purchaseDate,
       status,
       isFixed,
       recurrenceDay,
@@ -464,6 +648,7 @@ export class TransactionForm implements OnInit {
       isInstallment,
       installmentNumber,
       totalInstallments,
+      amountInputMode,
     } = this.form.getRawValue();
 
     // Se já era fixa/parcelada (tinha um RecurrenceGroupId) e continua sendo, preserva o
@@ -473,13 +658,15 @@ export class TransactionForm implements OnInit {
     const recurrenceGroupId =
       isFixed || isInstallment ? (this.originalRecurrenceGroupId ?? crypto.randomUUID()) : null;
 
-    // Quando parcelado NA CRIAÇÃO, o Valor digitado é o TOTAL — o que é salvo em cada
-    // transação (esta e as próximas parcelas geradas automaticamente) é o valor dividido
-    // pelo total de parcelas, arredondado pra centavos. Em EDIÇÃO, o Valor já edita
-    // diretamente o valor desta parcela (ver amountLabel) — nada pra dividir.
+    // Quando parcelado NA CRIAÇÃO, o Valor digitado é o TOTAL (divide pelas parcelas,
+    // arredondado pra centavos) ou já o valor de UMA parcela (usa direto, sem dividir) —
+    // depende do que foi escolhido em amountInputMode (ver amountLabel). Em EDIÇÃO, o
+    // Valor já edita diretamente esta parcela — nenhuma das duas contas se aplica.
     const amountToSave =
       isInstallment && !this.isEditMode() && amount !== null && totalInstallments
-        ? Math.round((amount / totalInstallments) * 100) / 100
+        ? amountInputMode === 'perInstallment'
+          ? amount
+          : Math.round((amount / totalInstallments) * 100) / 100
         : (amount ?? 0);
 
     // Numa despesa de cartão NOVA, o que é salvo como Data é o VENCIMENTO da fatura em
@@ -488,6 +675,18 @@ export class TransactionForm implements OnInit {
     // mês seguinte). Em edição, a Data já é o vencimento, não recalcula.
     const creditCardDueDate = this.creditCardDueDatePreview();
     const dateIso = creditCardDueDate ? creditCardDueDate.toISOString() : `${date}T00:00:00Z`;
+
+    // Data da Compra: na CRIAÇÃO de despesa de cartão, é o mesmo valor digitado no campo
+    // "Data da Compra" (que também alimenta o cálculo do vencimento acima). Em EDIÇÃO, é
+    // um campo independente (purchaseDate), que não mexe no vencimento já salvo. Pra
+    // transação comum, não existe — Date já é o dia real.
+    const purchaseDateIso = this.isCreditCardMode()
+      ? this.isEditMode()
+        ? purchaseDate
+          ? `${purchaseDate}T00:00:00Z`
+          : null
+        : `${date}T00:00:00Z`
+      : null;
 
     const dto = {
       accountId: this.isCreditCardMode() ? null : accountId,
@@ -511,12 +710,24 @@ export class TransactionForm implements OnInit {
       recurrenceEndDate: isFixed && recurrenceEndDate ? `${recurrenceEndDate}-01T00:00:00Z` : null,
       installmentNumber: isInstallment ? installmentNumber : null,
       totalInstallments: isInstallment ? totalInstallments : null,
+      // PaidDate não é editável aqui — só a tela de Fatura pode definir isso (ver
+      // SetInvoiceStatusAsync), então nunca é enviado por este formulário. Em edição,
+      // isso preserva o valor já salvo no backend (ApplyDto só sobrescreve o que vier
+      // no dto — como aqui sempre vai null, precisa reenviar o valor atual pra não apagar).
+      paidDate: this.loadedPaidDateIso,
+      purchaseDate: purchaseDateIso,
     };
 
     const id = this.transactionId();
 
     if (id === null) {
-      this.transactionService.create(dto).subscribe(() => this.router.navigate(['/transactions']));
+      this.transactionService.create(dto).subscribe(() => {
+        if (afterSave === 'createAnother') {
+          this.resetFormForNextEntry();
+        } else {
+          this.router.navigate(['/transactions']);
+        }
+      });
       return;
     }
 
@@ -542,6 +753,33 @@ export class TransactionForm implements OnInit {
       : this.transactionService.update(id, dto);
 
     request$.subscribe(() => this.router.navigate(['/transactions']));
+  }
+
+  // Preserva Cartão/Conta/Tipo (o contexto do lote que está sendo lançado) e limpa o
+  // resto pra próxima compra — description/valor/categoria/data raramente se repetem
+  // de uma compra pra outra dentro da mesma fatura.
+  private resetFormForNextEntry(): void {
+    this.form.reset({
+      type: this.form.controls.type.value,
+      categoryId: '',
+      subcategoryId: '',
+      accountId: this.form.controls.accountId.value,
+      creditCardId: this.form.controls.creditCardId.value,
+      amount: null,
+      description: '',
+      date: this.todayAsInputValue(),
+      purchaseDate: null,
+      status: 'Pending',
+      isFixed: false,
+      recurrenceDay: null,
+      recurrenceEndDate: null,
+      isInstallment: false,
+      installmentNumber: null,
+      totalInstallments: null,
+      amountInputMode: 'total',
+    });
+
+    document.getElementById('description')?.focus();
   }
 
   private todayAsInputValue(): string {
@@ -590,36 +828,39 @@ export class TransactionForm implements OnInit {
   // depois do fechamento do cartão, a fatura fecha no mês seguinte (perdeu a deste mês).
   // O vencimento fica no mesmo mês do fechamento se dueDay > closingDay (venceu antes do
   // próximo fechamento), senão no mês seguinte ao fechamento.
+  //
+  // installmentMonthOffset desloca esse resultado N meses pra frente — usado quando o
+  // usuário registra diretamente a parcela N (não a 1ª) de uma compra parcelada: a data
+  // de compra digitada continua sendo a da compra original (1ª parcela), mas ESTA
+  // ocorrência específica vence N-1 meses depois dela.
   private computeCreditCardInvoice(
     purchaseYear: number,
     purchaseMonth: number,
     purchaseDay: number,
     closingDay: number,
     dueDay: number,
+    installmentMonthOffset = 0,
   ): { closingDate: Date; dueDate: Date } {
-    let closingMonth = purchaseMonth;
-    let closingYear = purchaseYear;
+    // Índice absoluto de mês (ano*12 + mês, 0-based) evita loops manuais de overflow
+    // pra somar meses — tanto no cálculo normal quanto no deslocamento de parcela.
+    let closingMonthIndex = purchaseYear * 12 + (purchaseMonth - 1);
 
     if (purchaseDay > closingDay) {
-      closingMonth += 1;
-
-      if (closingMonth > 12) {
-        closingMonth = 1;
-        closingYear += 1;
-      }
+      closingMonthIndex += 1;
     }
 
-    let dueMonth = closingMonth;
-    let dueYear = closingYear;
+    closingMonthIndex += installmentMonthOffset;
+
+    let dueMonthIndex = closingMonthIndex;
 
     if (dueDay <= closingDay) {
-      dueMonth += 1;
-
-      if (dueMonth > 12) {
-        dueMonth = 1;
-        dueYear += 1;
-      }
+      dueMonthIndex += 1;
     }
+
+    const closingYear = Math.floor(closingMonthIndex / 12);
+    const closingMonth = (closingMonthIndex % 12) + 1;
+    const dueYear = Math.floor(dueMonthIndex / 12);
+    const dueMonth = (dueMonthIndex % 12) + 1;
 
     const closingDate = new Date(Date.UTC(closingYear, closingMonth - 1, closingDay));
     const clampedDueDay = Math.min(dueDay, new Date(dueYear, dueMonth, 0).getDate());

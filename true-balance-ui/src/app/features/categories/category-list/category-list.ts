@@ -1,10 +1,11 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { switchMap } from 'rxjs';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
 
 import { resolveLucideIconName } from '../../../shared/utils/lucide-icon.util';
+import { CategoryType } from '../../../core/models/category.model';
 import { CategoryService } from '../../../core/services/category.service';
 
 @Component({
@@ -23,6 +24,18 @@ export class CategoryList {
     toObservable(this.refreshTrigger).pipe(switchMap(() => this.categoryService.getAll())),
     { initialValue: [] },
   );
+
+  // Abas Despesa/Receita substituem a coluna Tipo — cada categoria já é uma coisa ou
+  // outra, então mostrar as duas juntas numa lista só só adicionava ruído visual.
+  readonly activeTab = signal<CategoryType>('Expense');
+
+  readonly filteredCategories = computed(() =>
+    this.categories().filter((category) => category.type === this.activeTab()),
+  );
+
+  setTab(type: CategoryType): void {
+    this.activeTab.set(type);
+  }
 
   readonly resolveIconName = resolveLucideIconName;
 

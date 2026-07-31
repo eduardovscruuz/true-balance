@@ -18,4 +18,6 @@ public record CreateTransactionDto(
     int? RecurrenceDay,
     DateTime? RecurrenceEndDate,
     int? InstallmentNumber,
-    int? TotalInstallments);
+    int? TotalInstallments,
+    DateTime? PaidDate,
+    DateTime? PurchaseDate);

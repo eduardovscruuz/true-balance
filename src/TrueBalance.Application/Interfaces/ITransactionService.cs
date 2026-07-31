@@ -14,5 +14,5 @@ public interface ITransactionService
     Task<bool> DeleteAsync(Guid id);
     Task<bool> DeleteSeriesAsync(Guid id);
     Task<DateTime?> GetEarliestDateAsync();
-    Task<int> SetInvoiceStatusAsync(Guid creditCardId, int year, int month, TransactionStatus status);
+    Task<int> SetInvoiceStatusAsync(Guid creditCardId, int year, int month, TransactionStatus status, DateTime? paidDate);
 }

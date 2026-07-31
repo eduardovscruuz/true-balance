@@ -1,6 +1,6 @@
 <div class="p-6">
   <div class="flex items-center justify-between mb-6">
-    <h1 class="text-2xl font-bold text-gray-800">Fatura do Cartão</h1>
+    <h1 class="text-2xl font-bold text-gray-800">{{ creditCard() ? 'Fatura ' + creditCard()!.name : 'Fatura do Cartão' }}</h1>
     <a routerLink="/credit-cards" class="text-sm text-blue-600 hover:underline">Voltar pra Cartões</a>
   </div>
 
@@ -20,7 +20,7 @@
   @if (creditCard(); as card) {
     <div class="bg-white shadow-sm rounded-lg p-4 mb-6 flex items-center justify-between">
       <div>
-        <p class="text-lg font-semibold text-gray-800">{{ card.name }} — {{ selectedMonthLabel() }}</p>
+        <p class="text-lg font-semibold text-gray-800">Fatura de {{ selectedMonthLabel() }}</p>
         <p class="text-xs text-gray-400 mt-1">Fecha dia {{ card.closingDay }} — vence dia {{ card.dueDay }}</p>
         <a
           [routerLink]="['/transactions/new']"
@@ -35,17 +35,62 @@
           {{ invoiceTotal() < 0 ? '+' : '' }}{{ (invoiceTotal() < 0 ? -invoiceTotal() : invoiceTotal()) | currency: 'BRL' }}
         </p>
         @if (invoiceStatus(); as status) {
-          <button
-            type="button"
-            (click)="toggleInvoiceStatus()"
-            class="mt-1 px-3 py-1 rounded-full text-xs font-medium transition"
-            [class.bg-amber-100]="status === 'Pending'"
-            [class.text-amber-700]="status === 'Pending'"
-            [class.bg-green-100]="status === 'Paid'"
-            [class.text-green-700]="status === 'Paid'"
-          >
-            {{ status === 'Paid' ? 'Pago — marcar como Pendente' : 'Pendente — marcar como Pago' }}
-          </button>
+          @if (isPickingPaidDate()) {
+            <div class="mt-1 flex items-center gap-1 justify-end">
+              <input
+                type="date"
+                [value]="paidDateInput()"
+                (input)="setPaidDateInput($any($event.target).value)"
+                class="border border-gray-300 rounded-md px-2 py-1 text-xs"
+              />
+              <button
+                type="button"
+                (click)="confirmPaidDate()"
+                class="px-2 py-1 rounded-md text-xs bg-green-600 text-white hover:bg-green-700 transition"
+              >
+                OK
+              </button>
+              <button
+                type="button"
+                (click)="cancelPaidDatePicker()"
+                class="px-2 py-1 rounded-md text-xs text-gray-500 hover:bg-gray-100 transition"
+              >
+                Cancelar
+              </button>
+            </div>
+          } @else if (status === 'Paid') {
+            <div class="mt-1 flex items-center justify-end gap-1">
+              <span class="{{ statusBadgeBaseClass }} {{ statusBadgeClass.Paid }}">
+                Pago em {{ invoicePaidDate() | date: 'dd/MM' : 'UTC' }}
+              </span>
+              <button
+                type="button"
+                (click)="markAsPending()"
+                class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 transition text-gray-400"
+                aria-label="Reverter — marcar como Pendente"
+                title="Reverter — marcar como Pendente"
+              >
+                <lucide-icon name="undo-2" [size]="14"></lucide-icon>
+              </button>
+              <button
+                type="button"
+                (click)="startEditingPaidDate()"
+                class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 transition text-gray-400"
+                aria-label="Editar data de pagamento"
+                title="Editar data de pagamento"
+              >
+                <lucide-icon name="pencil" [size]="14"></lucide-icon>
+              </button>
+            </div>
+          } @else {
+            <button
+              type="button"
+              (click)="startPaying()"
+              class="mt-1 px-4 py-1.5 rounded-md text-sm font-semibold bg-green-600 text-white hover:bg-green-700 transition"
+            >
+              Pagar
+            </button>
+          }
         }
       </div>
     </div>
@@ -57,7 +102,7 @@
         <table class="w-full border-collapse bg-white shadow-sm rounded-lg overflow-hidden">
           <thead class="bg-gray-100 text-left text-sm text-gray-600">
             <tr>
-              <th class="px-4 py-2">Vencimento</th>
+              <th class="px-4 py-2">Data da Compra</th>
               <th class="px-4 py-2">Descrição</th>
               <th class="px-4 py-2">Categoria</th>
               <th class="px-4 py-2">Valor</th>
@@ -67,7 +112,7 @@
           <tbody>
             @for (item of items; track item.id) {
               <tr class="border-t border-gray-200">
-                <td class="px-4 py-2 text-gray-600">{{ item.date | date: 'dd/MM' : 'UTC' }}</td>
+                <td class="px-4 py-2 text-gray-600">{{ (item.purchaseDate ?? item.date) | date: 'dd/MM' : 'UTC' }}</td>
                 <td class="px-4 py-2">
                   {{ item.description }}
                   @if (item.installmentNumber && item.totalInstallments) {
@@ -89,10 +134,10 @@
                 </td>
                 <td
                   class="px-4 py-2 font-medium"
-                  [class.text-red-600]="item.type === 'Expense'"
+                  [class.text-gray-800]="item.type === 'Expense'"
                   [class.text-green-600]="item.type === 'Income'"
                 >
-                  {{ item.type === 'Income' ? '+' : '-' }}{{ item.amount | currency: 'BRL' }}
+                  {{ item.type === 'Income' ? '-' : '' }}{{ item.amount | currency: 'BRL' }}
                 </td>
                 <td class="px-4 py-2 text-right whitespace-nowrap">
                   <a
@@ -103,6 +148,14 @@
                   >
                     <lucide-icon name="pencil" [size]="16"></lucide-icon>
                   </a>
+                  <button
+                    type="button"
+                    (click)="deleteItem(item.id, item.description, item.recurrenceGroupId)"
+                    class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-red-50 transition text-red-500"
+                    aria-label="Excluir transação"
+                  >
+                    <lucide-icon name="trash-2" [size]="16"></lucide-icon>
+                  </button>
                 </td>
               </tr>
             }

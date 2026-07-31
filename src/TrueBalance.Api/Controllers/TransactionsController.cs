@@ -81,7 +81,7 @@ public class TransactionsController : ControllerBase
     [HttpPatch("credit-cards/{creditCardId:guid}/invoices/{year:int}/{month:int}/status")]
     public async Task<IActionResult> SetInvoiceStatus(Guid creditCardId, int year, int month, SetInvoiceStatusDto dto)
     {
-        var updated = await _transactionService.SetInvoiceStatusAsync(creditCardId, year, month, dto.Status);
+        var updated = await _transactionService.SetInvoiceStatusAsync(creditCardId, year, month, dto.Status, dto.PaidDate);
         return updated == 0 ? NotFound() : NoContent();
     }
 }

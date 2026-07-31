@@ -48,6 +48,7 @@
             </th>
             <th class="px-4 py-2">Descrição</th>
             <th class="px-4 py-2">Categoria</th>
+            <th class="px-4 py-2">Conta</th>
             <th class="px-4 py-2">Status</th>
             <th class="px-4 py-2 cursor-pointer select-none" (click)="toggleSort('amount')">
               Valor
@@ -59,24 +60,48 @@
           </tr>
         </thead>
         <tbody>
-          @for (row of rowList; track row.kind === 'transaction' ? row.id : row.creditCardId) {
+          @for (row of rowList; track row.kind === 'transaction' ? row.id : row.creditCardId + row.invoiceMonthLabel) {
             @if (row.kind === 'cardInvoice') {
               <tr class="border-t border-gray-200 bg-gray-50">
                 <td class="px-4 py-2 text-gray-600">{{ row.date | date: 'dd/MM' : 'UTC' }}</td>
-                <td class="px-4 py-2" colspan="2">
-                  <span class="font-medium text-gray-800">{{ row.cardName }}</span>
-                  <span class="ml-1 text-xs text-gray-400">(fatura — {{ row.itemCount }} compras)</span>
+                <td class="px-4 py-2">
+                  <span class="font-medium text-gray-800">Fatura de {{ row.invoiceMonthLabel }}</span>
+                  <span class="ml-1 text-[10px] font-semibold text-gray-400 uppercase">
+                    ({{ row.itemCount }} {{ row.itemCount === 1 ? 'compra' : 'compras' }})
+                  </span>
+                </td>
+                <td class="px-4 py-2 text-gray-600">
+                  <div class="flex items-center gap-2">
+                    <span
+                      class="flex items-center justify-center w-8 h-8 rounded-full shrink-0"
+                      [style.background-color]="row.cardColor ?? '#9CA3AF'"
+                    >
+                      <lucide-icon [name]="resolveIconName(row.cardIcon ?? 'credit-card')" [size]="16" color="white"></lucide-icon>
+                    </span>
+                    <span>Cartão {{ row.cardName }}</span>
+                  </div>
+                </td>
+                <td class="px-4 py-2 text-gray-600">
+                  <div class="flex items-center gap-2">
+                    <span
+                      class="flex items-center justify-center w-6 h-6 rounded-md text-white text-[10px] font-semibold shrink-0"
+                      [style.background-color]="row.accountColor ?? '#9CA3AF'"
+                    >
+                      {{ row.accountName | initials }}
+                    </span>
+                    <span>{{ row.accountName }}</span>
+                  </div>
                 </td>
                 <td class="px-4 py-2">
-                  <span
-                    class="px-2 py-0.5 rounded-full text-xs font-medium"
-                    [class.bg-amber-100]="row.status === 'Pending'"
-                    [class.text-amber-700]="row.status === 'Pending'"
-                    [class.bg-green-100]="row.status === 'Paid'"
-                    [class.text-green-700]="row.status === 'Paid'"
-                  >
-                    {{ row.status === 'Paid' ? 'Pago' : 'Pendente' }}
-                  </span>
+                  @if (row.paymentTiming) {
+                    <span class="{{ statusBadgeBaseClass }} {{ paymentTimingBadgeClass[row.paymentTiming] }}">
+                      {{ paymentTimingLabel[row.paymentTiming] }}
+                    </span>
+                  } @else {
+                    <span class="{{ statusBadgeBaseClass }} {{ statusBadgeClass[row.status] }}">
+                      {{ row.status === 'Paid' ? 'Pago' : 'Pendente' }}
+                    </span>
+                  }
                 </td>
                 <td
                   class="px-4 py-2 font-medium"
@@ -102,10 +127,10 @@
                 <td class="px-4 py-2">
                   {{ row.description }}
                   @if (row.isFixed) {
-                    <span class="ml-1 text-xs text-gray-400">(fixa)</span>
+                    <span class="ml-1 text-[10px] font-semibold text-gray-400 uppercase">(fixa)</span>
                   }
                   @if (row.installmentNumber && row.totalInstallments) {
-                    <span class="ml-1 text-xs text-gray-400">({{ row.installmentNumber }}/{{ row.totalInstallments }})</span>
+                    <span class="ml-1 text-[10px] font-semibold text-gray-400 uppercase">({{ row.installmentNumber }}/{{ row.totalInstallments }})</span>
                   }
                 </td>
                 <td class="px-4 py-2 text-gray-600">
@@ -121,14 +146,19 @@
                     <span>{{ row.categoryName }}</span>
                   </div>
                 </td>
+                <td class="px-4 py-2 text-gray-600">
+                  <div class="flex items-center gap-2">
+                    <span
+                      class="flex items-center justify-center w-6 h-6 rounded-md text-white text-[10px] font-semibold shrink-0"
+                      [style.background-color]="row.accountColor ?? '#9CA3AF'"
+                    >
+                      {{ row.accountName | initials }}
+                    </span>
+                    <span>{{ row.accountName }}</span>
+                  </div>
+                </td>
                 <td class="px-4 py-2">
-                  <span
-                    class="px-2 py-0.5 rounded-full text-xs font-medium"
-                    [class.bg-amber-100]="row.status === 'Pending'"
-                    [class.text-amber-700]="row.status === 'Pending'"
-                    [class.bg-green-100]="row.status === 'Paid'"
-                    [class.text-green-700]="row.status === 'Paid'"
-                  >
+                  <span class="{{ statusBadgeBaseClass }} {{ statusBadgeClass[row.status] }}">
                     {{ row.status === 'Paid' ? 'Pago' : 'Pendente' }}
                   </span>
                 </td>
