@@ -1,0 +1,46 @@
+<div class="relative">
+  <button
+    type="button"
+    (click)="toggle()"
+    [disabled]="disabled()"
+    class="flex items-center gap-3 w-full border border-gray-300 rounded-md px-3 py-2 hover:border-gray-400 transition text-left disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+    <span class="flex items-center justify-center w-8 h-8 rounded-md bg-gray-100 shrink-0">
+      <lucide-icon [name]="value() || 'tag'" [size]="16" color="#374151"></lucide-icon>
+    </span>
+    <span class="flex-1 text-sm truncate" [class.text-gray-400]="!value()" [class.text-gray-800]="value()">
+      {{ value() || 'Escolher ícone' }}
+    </span>
+    <lucide-icon name="chevron-down" [size]="16" color="#9CA3AF"></lucide-icon>
+  </button>
+
+  @if (isOpen()) {
+    <div class="absolute z-10 mt-1 w-full min-w-72 bg-white border border-gray-200 rounded-md shadow-lg p-3">
+      <input
+        type="text"
+        [value]="searchTerm()"
+        (input)="onSearchInput($any($event.target).value)"
+        placeholder="Buscar ícone (ex: carro, comida, casa)..."
+        class="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+
+      @if (visibleIcons().length === 0) {
+        <p class="text-xs text-gray-400 text-center py-4">Nenhum ícone encontrado.</p>
+      } @else {
+        <div class="grid grid-cols-8 gap-1 max-h-56 overflow-y-auto">
+          @for (iconName of visibleIcons(); track iconName) {
+            <button
+              type="button"
+              (click)="selectIcon(iconName)"
+              [title]="iconName"
+              class="flex items-center justify-center aspect-square rounded hover:bg-blue-50 transition"
+              [class.bg-blue-100]="iconName === value()"
+            >
+              <lucide-icon [name]="iconName" [size]="18" color="#374151"></lucide-icon>
+            </button>
+          }
+        </div>
+      }
+    </div>
+  }
+</div>

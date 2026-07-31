@@ -1,0 +1,3 @@
+/* Estilos globais customizados (SCSS). O Tailwind entra separado, via src/tailwind.css,
+   pra não passar pelo compilador Sass — o Tailwind v4 usa @layer e outras regras CSS
+   nativas que o parser do Sass não entende. */

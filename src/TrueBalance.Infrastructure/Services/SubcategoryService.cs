@@ -45,4 +45,36 @@ public class SubcategoryService : ISubcategoryService
 
         return new SubcategoryDto(subcategory.Id, subcategory.CategoryId, subcategory.Name);
     }
+
+    public async Task<SubcategoryDto?> UpdateAsync(Guid id, CreateSubcategoryDto dto)
+    {
+        var subcategory = await _context.Subcategories.FindAsync(id);
+
+        if (subcategory is null)
+        {
+            return null;
+        }
+
+        subcategory.CategoryId = dto.CategoryId;
+        subcategory.Name = dto.Name;
+
+        await _context.SaveChangesAsync();
+
+        return new SubcategoryDto(subcategory.Id, subcategory.CategoryId, subcategory.Name);
+    }
+
+    public async Task<bool> DeleteAsync(Guid id)
+    {
+        var subcategory = await _context.Subcategories.FindAsync(id);
+
+        if (subcategory is null)
+        {
+            return false;
+        }
+
+        _context.Subcategories.Remove(subcategory);
+        await _context.SaveChangesAsync();
+
+        return true;
+    }
 }

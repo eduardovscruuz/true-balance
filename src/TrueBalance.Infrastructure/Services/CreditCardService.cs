@@ -17,18 +17,15 @@ public class CreditCardService : ICreditCardService
 
     public async Task<IEnumerable<CreditCardDto>> GetAllAsync()
     {
-        return await _context.CreditCards
-            .Select(c => new CreditCardDto(c.Id, c.Name, c.ClosingDay, c.DueDay, c.Limit))
-            .ToListAsync();
+        var creditCards = await _context.CreditCards.ToListAsync();
+        return creditCards.Select(MapToDto);
     }
 
     public async Task<CreditCardDto?> GetByIdAsync(Guid id)
     {
         var creditCard = await _context.CreditCards.FindAsync(id);
 
-        return creditCard is null
-            ? null
-            : new CreditCardDto(creditCard.Id, creditCard.Name, creditCard.ClosingDay, creditCard.DueDay, creditCard.Limit);
+        return creditCard is null ? null : MapToDto(creditCard);
     }
 
     public async Task<CreditCardDto> AddAsync(CreateCreditCardDto dto)
@@ -39,12 +36,51 @@ public class CreditCardService : ICreditCardService
             Name = dto.Name,
             ClosingDay = dto.ClosingDay,
             DueDay = dto.DueDay,
-            Limit = dto.Limit
+            Limit = dto.Limit,
+            PaymentAccountId = dto.PaymentAccountId
         };
 
         _context.CreditCards.Add(creditCard);
         await _context.SaveChangesAsync();
 
-        return new CreditCardDto(creditCard.Id, creditCard.Name, creditCard.ClosingDay, creditCard.DueDay, creditCard.Limit);
+        return MapToDto(creditCard);
     }
+
+    public async Task<CreditCardDto?> UpdateAsync(Guid id, CreateCreditCardDto dto)
+    {
+        var creditCard = await _context.CreditCards.FindAsync(id);
+
+        if (creditCard is null)
+        {
+            return null;
+        }
+
+        creditCard.Name = dto.Name;
+        creditCard.ClosingDay = dto.ClosingDay;
+        creditCard.DueDay = dto.DueDay;
+        creditCard.Limit = dto.Limit;
+        creditCard.PaymentAccountId = dto.PaymentAccountId;
+
+        await _context.SaveChangesAsync();
+
+        return MapToDto(creditCard);
+    }
+
+    public async Task<bool> DeleteAsync(Guid id)
+    {
+        var creditCard = await _context.CreditCards.FindAsync(id);
+
+        if (creditCard is null)
+        {
+            return false;
+        }
+
+        _context.CreditCards.Remove(creditCard);
+        await _context.SaveChangesAsync();
+
+        return true;
+    }
+
+    private static CreditCardDto MapToDto(CreditCard c) =>
+        new(c.Id, c.Name, c.ClosingDay, c.DueDay, c.Limit, c.PaymentAccountId);
 }

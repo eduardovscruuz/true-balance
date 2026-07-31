@@ -47,4 +47,38 @@ public class CategoryService : ICategoryService
 
         return new CategoryDto(category.Id, category.Name, category.Type, category.Color, category.Icon);
     }
+
+    public async Task<CategoryDto?> UpdateAsync(Guid id, CreateCategoryDto dto)
+    {
+        var category = await _context.Categories.FindAsync(id);
+
+        if (category is null)
+        {
+            return null;
+        }
+
+        category.Name = dto.Name;
+        category.Type = dto.Type;
+        category.Color = dto.Color;
+        category.Icon = dto.Icon;
+
+        await _context.SaveChangesAsync();
+
+        return new CategoryDto(category.Id, category.Name, category.Type, category.Color, category.Icon);
+    }
+
+    public async Task<bool> DeleteAsync(Guid id)
+    {
+        var category = await _context.Categories.FindAsync(id);
+
+        if (category is null)
+        {
+            return false;
+        }
+
+        _context.Categories.Remove(category);
+        await _context.SaveChangesAsync();
+
+        return true;
+    }
 }

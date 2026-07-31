@@ -7,4 +7,6 @@ public interface ICreditCardService
     Task<IEnumerable<CreditCardDto>> GetAllAsync();
     Task<CreditCardDto?> GetByIdAsync(Guid id);
     Task<CreditCardDto> AddAsync(CreateCreditCardDto dto);
+    Task<CreditCardDto?> UpdateAsync(Guid id, CreateCreditCardDto dto);
+    Task<bool> DeleteAsync(Guid id);
 }

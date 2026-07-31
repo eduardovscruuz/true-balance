@@ -1,0 +1,49 @@
+<div class="p-6">
+  <a routerLink="/categories" class="text-sm text-blue-600 hover:underline mb-2 inline-block">← Voltar pra Categorias</a>
+
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-gray-800">
+      Subcategorias
+      @if (category(); as cat) {
+        <span class="text-gray-400 font-normal">de {{ cat.name }}</span>
+      }
+    </h1>
+    <a
+      [routerLink]="['/categories', categoryId, 'subcategories', 'new']"
+      class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition"
+    >
+      Novo
+    </a>
+  </div>
+
+  @if (subcategories(); as subcategoryList) {
+    @if (subcategoryList.length === 0) {
+      <p class="text-gray-500">Nenhuma subcategoria cadastrada ainda.</p>
+    } @else {
+      <ul class="bg-white shadow-sm rounded-lg divide-y divide-gray-200">
+        @for (subcategory of subcategoryList; track subcategory.id) {
+          <li class="flex items-center justify-between px-4 py-2">
+            <span class="text-gray-800">{{ subcategory.name }}</span>
+            <div class="whitespace-nowrap">
+              <a
+                [routerLink]="['/categories', categoryId, 'subcategories', subcategory.id, 'edit']"
+                class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-gray-100 transition text-gray-500"
+                aria-label="Editar subcategoria"
+              >
+                <lucide-icon name="pencil" [size]="16"></lucide-icon>
+              </a>
+              <button
+                type="button"
+                (click)="deleteSubcategory(subcategory.id, subcategory.name)"
+                class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-red-50 transition text-red-500"
+                aria-label="Excluir subcategoria"
+              >
+                <lucide-icon name="trash-2" [size]="16"></lucide-icon>
+              </button>
+            </div>
+          </li>
+        }
+      </ul>
+    }
+  }
+</div>

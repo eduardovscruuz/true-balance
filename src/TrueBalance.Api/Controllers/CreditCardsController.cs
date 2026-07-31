@@ -35,4 +35,18 @@ public class CreditCardsController : ControllerBase
         var created = await _creditCardService.AddAsync(dto);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
+
+    [HttpPut("{id:guid}")]
+    public async Task<ActionResult<CreditCardDto>> Update(Guid id, CreateCreditCardDto dto)
+    {
+        var updated = await _creditCardService.UpdateAsync(id, dto);
+        return updated is null ? NotFound() : Ok(updated);
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        var deleted = await _creditCardService.DeleteAsync(id);
+        return deleted ? NoContent() : NotFound();
+    }
 }

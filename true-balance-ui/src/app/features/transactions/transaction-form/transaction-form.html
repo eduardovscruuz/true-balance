@@ -1,0 +1,331 @@
+<div class="p-6 max-w-md">
+  <h1 class="text-2xl font-bold text-gray-800 mb-6">{{ formTitle() }}</h1>
+
+  <form [formGroup]="form" (ngSubmit)="onSubmit()" class="space-y-4">
+    @if (!isTypeImplicit()) {
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+        <div class="grid grid-cols-2 gap-2">
+          <label
+            class="flex items-center justify-center gap-2 border rounded-md px-3 py-2 cursor-pointer transition"
+            [class.border-red-500]="form.controls.type.value === 'Expense'"
+            [class.bg-red-50]="form.controls.type.value === 'Expense'"
+            [class.text-red-700]="form.controls.type.value === 'Expense'"
+            [class.border-gray-300]="form.controls.type.value !== 'Expense'"
+          >
+            <input type="radio" formControlName="type" value="Expense" class="sr-only" />
+            Despesa
+          </label>
+          <label
+            class="flex items-center justify-center gap-2 border rounded-md px-3 py-2 cursor-pointer transition"
+            [class.border-green-500]="form.controls.type.value === 'Income'"
+            [class.bg-green-50]="form.controls.type.value === 'Income'"
+            [class.text-green-700]="form.controls.type.value === 'Income'"
+            [class.border-gray-300]="form.controls.type.value !== 'Income'"
+          >
+            <input type="radio" formControlName="type" value="Income" class="sr-only" />
+            Receita
+          </label>
+        </div>
+      </div>
+    }
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1" for="description">
+        Descrição <span class="text-red-500">*</span>
+      </label>
+      <input
+        id="description"
+        type="text"
+        formControlName="description"
+        placeholder="ex: Salário, Mercado, Aluguel"
+        class="w-full border rounded-md px-3 py-2 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        [class.border-gray-300]="form.controls.description.valid || form.controls.description.untouched"
+        [class.border-red-500]="form.controls.description.invalid && form.controls.description.touched"
+      />
+      @if (form.controls.description.invalid && form.controls.description.touched) {
+        <p class="text-xs text-red-600 mt-1">Descrição é obrigatória.</p>
+      }
+    </div>
+
+    <label class="flex items-center gap-2 text-sm text-gray-700">
+      <input type="checkbox" formControlName="isFixed" class="rounded border-gray-300" />
+      É fixa? (repete todo mês, ex: salário, assinatura)
+    </label>
+
+    @if (isFixedValue()) {
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1" for="recurrenceDay">
+          Fixa pra qual dia do mês? <span class="text-red-500">*</span>
+        </label>
+        <input
+          id="recurrenceDay"
+          type="number"
+          min="1"
+          max="31"
+          formControlName="recurrenceDay"
+          class="w-24 border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          [class.border-gray-300]="form.controls.recurrenceDay.valid || form.controls.recurrenceDay.untouched"
+          [class.border-red-500]="form.controls.recurrenceDay.invalid && form.controls.recurrenceDay.touched"
+        />
+        <p class="text-xs text-gray-400 mt-1">
+          O dia que a recorrência usa pra gerar os próximos meses — pode ser diferente da Data acima
+          (ex: recorre sempre dia 31, mas esta ocorrência específica pode ter caído no dia 30).
+          Em meses mais curtos, cai automaticamente no último dia do mês.
+        </p>
+        @if (form.controls.recurrenceDay.invalid && form.controls.recurrenceDay.touched) {
+          <p class="text-xs text-red-600 mt-1">Informe um dia entre 1 e 31.</p>
+        }
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1" for="recurrenceEndDate">
+          Repete até quando? (opcional)
+        </label>
+        <input
+          id="recurrenceEndDate"
+          type="month"
+          formControlName="recurrenceEndDate"
+          class="w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          [class.border-gray-300]="!recurrenceEndDateInvalid()"
+          [class.border-red-500]="recurrenceEndDateInvalid()"
+        />
+        <p class="text-xs text-gray-400 mt-1">
+          Deixe em branco pra repetir indefinidamente. Se preencher, o sistema para de gerar
+          novos meses depois deste (ex: mensalidade de faculdade que acaba em dezembro).
+        </p>
+        @if (recurrenceEndDateInvalid()) {
+          <p class="text-xs text-red-600 mt-1">O mês final não pode ser antes da Data informada acima.</p>
+        }
+      </div>
+    }
+
+    @if (isEditMode() && form.controls.isFixed.value) {
+      <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+        Essa alteração afeta só esta ocorrência — os outros meses já projetados dessa recorrência
+        não são alterados. Útil, por exemplo, pra ajustar o valor recebido neste mês específico
+        (ex: salário com hora extra) sem mudar os próximos meses.
+      </p>
+    }
+
+    <label class="flex items-center gap-2 text-sm text-gray-700">
+      <input type="checkbox" formControlName="isInstallment" class="rounded border-gray-300" />
+      É parcelado? (tem fim definido, ex: empréstimo, compra parcelada)
+    </label>
+
+    @if (isInstallmentValue()) {
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1" for="installmentNumber">
+            Parcela atual <span class="text-red-500">*</span>
+          </label>
+          <input
+            id="installmentNumber"
+            type="number"
+            min="1"
+            formControlName="installmentNumber"
+            class="w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            [class.border-gray-300]="form.controls.installmentNumber.valid || form.controls.installmentNumber.untouched"
+            [class.border-red-500]="form.controls.installmentNumber.invalid && form.controls.installmentNumber.touched"
+          />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1" for="totalInstallments">
+            Total de parcelas <span class="text-red-500">*</span>
+          </label>
+          <input
+            id="totalInstallments"
+            type="number"
+            min="1"
+            formControlName="totalInstallments"
+            class="w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            [class.border-gray-300]="form.controls.totalInstallments.valid || form.controls.totalInstallments.untouched"
+            [class.border-red-500]="form.controls.totalInstallments.invalid && form.controls.totalInstallments.touched"
+          />
+        </div>
+      </div>
+      @if (installmentRangeInvalid()) {
+        <p class="text-xs text-red-600 mt-1">A parcela atual não pode ser maior que o total de parcelas.</p>
+      }
+      @if (installmentAmountPreview() !== null) {
+        <p class="text-xs text-gray-500 mt-1">
+          Cada parcela será de {{ installmentAmountPreview() | currency: 'BRL' }}
+        </p>
+      }
+      @if (!isEditMode()) {
+        <p class="text-xs text-gray-400 mt-1">
+          Informe o valor TOTAL da compra no campo "Valor total" abaixo — o sistema calcula e salva
+          o valor de cada parcela automaticamente, gerando as próximas nos meses seguintes até
+          chegar no total informado.
+        </p>
+      }
+    }
+
+    @if (isEditMode() && isInstallmentValue()) {
+      <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+        O Valor abaixo edita direto esta parcela. Ao salvar, você escolhe entre alterar só ela
+        ou também todas as próximas parcelas PENDENTES da mesma compra (ex: reajuste que vale
+        a partir daqui) — as já pagas nunca são afetadas.
+      </p>
+    }
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1" for="amount">
+        {{ amountLabel() }} <span class="text-red-500">*</span>
+      </label>
+      <input
+        id="amount"
+        type="text"
+        inputmode="numeric"
+        appCurrencyMask
+        formControlName="amount"
+        placeholder="R$ 0,00"
+        class="w-full border rounded-md px-3 py-2 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        [class.border-gray-300]="form.controls.amount.valid || form.controls.amount.untouched"
+        [class.border-red-500]="form.controls.amount.invalid && form.controls.amount.touched"
+      />
+      @if (form.controls.amount.invalid && form.controls.amount.touched) {
+        <p class="text-xs text-red-600 mt-1">Informe um valor maior que zero.</p>
+      }
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1" for="categoryId">
+        Categoria <span class="text-red-500">*</span>
+      </label>
+      <select
+        id="categoryId"
+        formControlName="categoryId"
+        class="w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        [class.border-gray-300]="form.controls.categoryId.valid || form.controls.categoryId.untouched"
+        [class.border-red-500]="form.controls.categoryId.invalid && form.controls.categoryId.touched"
+      >
+        <option value="" disabled>Selecione uma categoria</option>
+        @for (category of filteredCategories(); track category.id) {
+          <option [value]="category.id">{{ category.name }}</option>
+        }
+      </select>
+      @if (filteredCategories().length === 0) {
+        <p class="text-xs text-gray-400 mt-1">
+          Nenhuma categoria de {{ form.controls.type.value === 'Expense' ? 'despesa' : 'receita' }} cadastrada ainda.
+        </p>
+      } @else if (form.controls.categoryId.invalid && form.controls.categoryId.touched) {
+        <p class="text-xs text-red-600 mt-1">Selecione uma categoria.</p>
+      }
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1" for="subcategoryId">Subcategoria</label>
+      <select
+        id="subcategoryId"
+        formControlName="subcategoryId"
+        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+      >
+        <option value="">Nenhuma</option>
+        @for (subcategory of filteredSubcategories(); track subcategory.id) {
+          <option [value]="subcategory.id">{{ subcategory.name }}</option>
+        }
+      </select>
+      @if (!hasSubcategories()) {
+        <p class="text-xs text-gray-400 mt-1">Essa categoria ainda não tem subcategorias cadastradas.</p>
+      }
+    </div>
+
+    @if (isCreditCardMode()) {
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1" for="creditCardId">
+          Cartão <span class="text-red-500">*</span>
+        </label>
+        <select
+          id="creditCardId"
+          formControlName="creditCardId"
+          class="w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          [class.border-gray-300]="form.controls.creditCardId.valid || form.controls.creditCardId.untouched"
+          [class.border-red-500]="form.controls.creditCardId.invalid && form.controls.creditCardId.touched"
+        >
+          <option value="" disabled>Selecione um cartão</option>
+          @for (creditCard of creditCards(); track creditCard.id) {
+            <option [value]="creditCard.id">{{ creditCard.name }}</option>
+          }
+        </select>
+        @if (creditCards().length === 0) {
+          <p class="text-xs text-gray-400 mt-1">Nenhum cartão cadastrado ainda.</p>
+        } @else if (form.controls.creditCardId.invalid && form.controls.creditCardId.touched) {
+          <p class="text-xs text-red-600 mt-1">Selecione um cartão.</p>
+        }
+      </div>
+    } @else {
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1" for="accountId">
+          Conta <span class="text-red-500">*</span>
+        </label>
+        <select
+          id="accountId"
+          formControlName="accountId"
+          class="w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          [class.border-gray-300]="form.controls.accountId.valid || form.controls.accountId.untouched"
+          [class.border-red-500]="form.controls.accountId.invalid && form.controls.accountId.touched"
+        >
+          <option value="" disabled>Selecione uma conta</option>
+          @for (account of accounts(); track account.id) {
+            <option [value]="account.id">{{ account.name }}</option>
+          }
+        </select>
+        @if (accounts().length === 0) {
+          <p class="text-xs text-gray-400 mt-1">Nenhuma conta cadastrada ainda.</p>
+        } @else if (form.controls.accountId.invalid && form.controls.accountId.touched) {
+          <p class="text-xs text-red-600 mt-1">Selecione uma conta.</p>
+        }
+      </div>
+    }
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1" for="date">
+          {{ isCreditCardMode() ? 'Data da Compra' : 'Data' }}
+        </label>
+        <input
+          id="date"
+          type="date"
+          formControlName="date"
+          class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        @if (creditCardDueDatePreview(); as dueDate) {
+          <p class="text-xs text-gray-400 mt-1">
+            Cai na fatura com vencimento em {{ dueDate | date: 'dd/MM/yyyy' : 'UTC' }} — é essa data que fica
+            registrada na transação.
+          </p>
+        }
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1" for="status">Status</label>
+        <select
+          id="status"
+          formControlName="status"
+          class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+        >
+          <option value="Paid">Pago</option>
+          <option value="Pending">Pendente</option>
+        </select>
+        @if (creditCardInvoiceStillOpen()) {
+          <p class="text-xs text-gray-400 mt-1">
+            A fatura deste mês ainda não fechou — essa compra cai na próxima, que ainda não pode estar paga.
+          </p>
+        }
+      </div>
+    </div>
+
+    <div class="flex gap-2 pt-2">
+      <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">
+        Salvar
+      </button>
+      <a
+        routerLink="/transactions"
+        class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
+      >
+        Cancelar
+      </a>
+    </div>
+  </form>
+</div>

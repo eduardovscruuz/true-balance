@@ -1,0 +1,51 @@
+<nav class="bg-gray-900 text-white">
+  <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-6">
+    <span class="font-semibold text-lg">TrueBalance</span>
+    <a
+      routerLink="/"
+      routerLinkActive="text-blue-400"
+      [routerLinkActiveOptions]="{ exact: true }"
+      class="hover:text-blue-300 transition"
+    >
+      Dashboard
+    </a>
+    <a routerLink="/transactions" routerLinkActive="text-blue-400" class="hover:text-blue-300 transition">
+      Transações
+    </a>
+    <a routerLink="/categories" routerLinkActive="text-blue-400" class="hover:text-blue-300 transition">
+      Categorias
+    </a>
+    <a routerLink="/accounts" routerLinkActive="text-blue-400" class="hover:text-blue-300 transition">
+      Contas
+    </a>
+    <a routerLink="/credit-cards" routerLinkActive="text-blue-400" class="hover:text-blue-300 transition">
+      Cartões
+    </a>
+
+    <div class="flex items-center gap-3 ml-auto bg-gray-800 rounded-lg px-2 py-1">
+      <button
+        type="button"
+        (click)="monthSelection.previousMonth()"
+        [disabled]="!monthSelection.canGoPrevious()"
+        class="w-8 h-8 flex items-center justify-center rounded hover:bg-gray-700 transition disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+        aria-label="Mês anterior"
+      >
+        ‹
+      </button>
+      <span class="text-sm font-medium w-32 text-center capitalize">{{ monthSelection.selectedMonthLabel() }}</span>
+      <button
+        type="button"
+        (click)="monthSelection.nextMonth()"
+        [disabled]="!monthSelection.canGoNext()"
+        class="w-8 h-8 flex items-center justify-center rounded hover:bg-gray-700 transition disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+        aria-label="Próximo mês"
+      >
+        ›
+      </button>
+    </div>
+  </div>
+</nav>
+
+<main class="max-w-5xl mx-auto">
+  <router-outlet></router-outlet>
+</main>

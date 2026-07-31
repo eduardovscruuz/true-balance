@@ -1,0 +1,169 @@
+<div class="p-6">
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-gray-800">Transações do Mês</h1>
+    <div class="flex gap-2">
+      <a
+        routerLink="/transactions/new"
+        [queryParams]="{ type: 'Expense' }"
+        class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition"
+      >
+        Nova Despesa
+      </a>
+      <a
+        routerLink="/transactions/new"
+        [queryParams]="{ type: 'Income' }"
+        class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition"
+      >
+        Nova Receita
+      </a>
+      <a
+        routerLink="/transactions/new"
+        [queryParams]="{ type: 'Expense', source: 'credit-card' }"
+        class="bg-gray-800 text-white px-4 py-2 rounded-md hover:bg-gray-900 transition"
+      >
+        Nova Despesa de Cartão
+      </a>
+      <a
+        routerLink="/transactions/new"
+        [queryParams]="{ type: 'Income', source: 'credit-card' }"
+        class="border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50 transition"
+      >
+        Estorno de Cartão
+      </a>
+    </div>
+  </div>
+
+  @if (rows(); as rowList) {
+    @if (rowList.length === 0) {
+      <p class="text-gray-500">Nenhuma transação neste mês.</p>
+    } @else {
+      <table class="w-full border-collapse bg-white shadow-sm rounded-lg overflow-hidden">
+        <thead class="bg-gray-100 text-left text-sm text-gray-600">
+          <tr>
+            <th class="px-4 py-2 cursor-pointer select-none" (click)="toggleSort('date')">
+              Data
+              @if (sortField() === 'date') {
+                <span class="text-gray-400">{{ sortDirection() === 'asc' ? '▲' : '▼' }}</span>
+              }
+            </th>
+            <th class="px-4 py-2">Descrição</th>
+            <th class="px-4 py-2">Categoria</th>
+            <th class="px-4 py-2">Status</th>
+            <th class="px-4 py-2 cursor-pointer select-none" (click)="toggleSort('amount')">
+              Valor
+              @if (sortField() === 'amount') {
+                <span class="text-gray-400">{{ sortDirection() === 'asc' ? '▲' : '▼' }}</span>
+              }
+            </th>
+            <th class="px-4 py-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of rowList; track row.kind === 'transaction' ? row.id : row.creditCardId) {
+            @if (row.kind === 'cardInvoice') {
+              <tr class="border-t border-gray-200 bg-gray-50">
+                <td class="px-4 py-2 text-gray-600">{{ row.date | date: 'dd/MM' : 'UTC' }}</td>
+                <td class="px-4 py-2" colspan="2">
+                  <span class="font-medium text-gray-800">{{ row.cardName }}</span>
+                  <span class="ml-1 text-xs text-gray-400">(fatura — {{ row.itemCount }} compras)</span>
+                </td>
+                <td class="px-4 py-2">
+                  <span
+                    class="px-2 py-0.5 rounded-full text-xs font-medium"
+                    [class.bg-amber-100]="row.status === 'Pending'"
+                    [class.text-amber-700]="row.status === 'Pending'"
+                    [class.bg-green-100]="row.status === 'Paid'"
+                    [class.text-green-700]="row.status === 'Paid'"
+                  >
+                    {{ row.status === 'Paid' ? 'Pago' : 'Pendente' }}
+                  </span>
+                </td>
+                <td
+                  class="px-4 py-2 font-medium"
+                  [class.text-red-600]="row.amount > 0"
+                  [class.text-green-600]="row.amount <= 0"
+                >
+                  {{ row.amount > 0 ? '-' : '+' }}{{ (row.amount > 0 ? row.amount : -row.amount) | currency: 'BRL' }}
+                </td>
+                <td class="px-4 py-2 text-right whitespace-nowrap">
+                  <a
+                    [routerLink]="['/credit-cards', row.creditCardId, 'invoice']"
+                    class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-gray-100 transition text-gray-500"
+                    aria-label="Ver fatura"
+                    title="Ver fatura"
+                  >
+                    <lucide-icon name="receipt" [size]="16"></lucide-icon>
+                  </a>
+                </td>
+              </tr>
+            } @else {
+              <tr class="border-t border-gray-200">
+                <td class="px-4 py-2 text-gray-600">{{ row.date | date: 'dd/MM' : 'UTC' }}</td>
+                <td class="px-4 py-2">
+                  {{ row.description }}
+                  @if (row.isFixed) {
+                    <span class="ml-1 text-xs text-gray-400">(fixa)</span>
+                  }
+                  @if (row.installmentNumber && row.totalInstallments) {
+                    <span class="ml-1 text-xs text-gray-400">({{ row.installmentNumber }}/{{ row.totalInstallments }})</span>
+                  }
+                </td>
+                <td class="px-4 py-2 text-gray-600">
+                  <div class="flex items-center gap-2">
+                    @if (row.categoryColor) {
+                      <span
+                        class="flex items-center justify-center w-8 h-8 rounded-full shrink-0"
+                        [style.background-color]="row.categoryColor"
+                      >
+                        <lucide-icon [name]="resolveIconName(row.categoryIcon ?? '')" [size]="16" color="white"></lucide-icon>
+                      </span>
+                    }
+                    <span>{{ row.categoryName }}</span>
+                  </div>
+                </td>
+                <td class="px-4 py-2">
+                  <span
+                    class="px-2 py-0.5 rounded-full text-xs font-medium"
+                    [class.bg-amber-100]="row.status === 'Pending'"
+                    [class.text-amber-700]="row.status === 'Pending'"
+                    [class.bg-green-100]="row.status === 'Paid'"
+                    [class.text-green-700]="row.status === 'Paid'"
+                  >
+                    {{ row.status === 'Paid' ? 'Pago' : 'Pendente' }}
+                  </span>
+                </td>
+                <td
+                  class="px-4 py-2 font-medium"
+                  [class.text-red-600]="row.type === 'Expense'"
+                  [class.text-green-600]="row.type === 'Income'"
+                >
+                  {{ row.type === 'Expense' ? '-' : '+' }}{{ row.amount | currency: 'BRL' }}
+                </td>
+                <td class="px-4 py-2 text-right whitespace-nowrap">
+                  <a
+                    [routerLink]="['/transactions', row.id, 'edit']"
+                    class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-gray-100 transition text-gray-500"
+                    [attr.aria-label]="row.status === 'Pending' ? 'Confirmar recebimento/pagamento' : 'Editar transação'"
+                    [title]="row.status === 'Pending' ? 'Confirmar e ajustar valor, se necessário' : 'Editar'"
+                  >
+                    <lucide-icon name="pencil" [size]="16"></lucide-icon>
+                  </a>
+                  <button
+                    type="button"
+                    (click)="deleteTransaction(row.id, row.description, row.recurrenceGroupId)"
+                    class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-red-50 transition text-red-500"
+                    aria-label="Excluir transação"
+                  >
+                    <lucide-icon name="trash-2" [size]="16"></lucide-icon>
+                  </button>
+                </td>
+              </tr>
+            }
+          }
+        </tbody>
+      </table>
+    }
+  } @else {
+    <p class="text-gray-500">Carregando...</p>
+  }
+</div>

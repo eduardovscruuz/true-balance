@@ -14,4 +14,8 @@ public record CreateTransactionDto(
     DateTime Date,
     bool IsFixed,
     string? InstallmentInfo,
-    Guid? RecurrenceGroupId);
+    Guid? RecurrenceGroupId,
+    int? RecurrenceDay,
+    DateTime? RecurrenceEndDate,
+    int? InstallmentNumber,
+    int? TotalInstallments);

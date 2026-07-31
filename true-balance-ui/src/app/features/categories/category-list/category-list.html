@@ -1,0 +1,82 @@
+<div class="p-6">
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-gray-800">Categorias</h1>
+    <a
+      routerLink="/categories/new"
+      class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition"
+    >
+      Novo
+    </a>
+  </div>
+
+  @if (categories(); as categoryList) {
+    @if (categoryList.length === 0) {
+      <p class="text-gray-500">Nenhuma categoria cadastrada.</p>
+    } @else {
+      <table class="w-full border-collapse bg-white shadow-sm rounded-lg overflow-hidden">
+        <thead class="bg-gray-100 text-left text-sm text-gray-600">
+          <tr>
+            <th class="px-4 py-2">Categoria</th>
+            <th class="px-4 py-2">Tipo</th>
+            <th class="px-4 py-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (category of categoryList; track category.id) {
+            <tr class="border-t border-gray-200">
+              <td class="px-4 py-2">
+                <div class="flex items-center gap-3">
+                  <span
+                    class="flex items-center justify-center w-8 h-8 rounded-full shrink-0"
+                    [style.background-color]="category.color"
+                  >
+                    <lucide-icon [name]="resolveIconName(category.icon)" [size]="16" color="white"></lucide-icon>
+                  </span>
+                  <span class="text-gray-800">{{ category.name }}</span>
+                </div>
+              </td>
+              <td class="px-4 py-2">
+                <span
+                  class="px-2 py-0.5 rounded-full text-xs font-medium"
+                  [class.bg-red-100]="category.type === 'Expense'"
+                  [class.text-red-700]="category.type === 'Expense'"
+                  [class.bg-green-100]="category.type === 'Income'"
+                  [class.text-green-700]="category.type === 'Income'"
+                >
+                  {{ category.type }}
+                </span>
+              </td>
+              <td class="px-4 py-2 text-right whitespace-nowrap">
+                <a
+                  [routerLink]="['/categories', category.id, 'subcategories']"
+                  class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-gray-100 transition text-gray-500"
+                  title="Subcategorias"
+                  aria-label="Ver subcategorias"
+                >
+                  <lucide-icon name="list" [size]="16"></lucide-icon>
+                </a>
+                <a
+                  [routerLink]="['/categories', category.id, 'edit']"
+                  class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-gray-100 transition text-gray-500"
+                  aria-label="Editar categoria"
+                >
+                  <lucide-icon name="pencil" [size]="16"></lucide-icon>
+                </a>
+                <button
+                  type="button"
+                  (click)="deleteCategory(category.id, category.name)"
+                  class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-red-50 transition text-red-500"
+                  aria-label="Excluir categoria"
+                >
+                  <lucide-icon name="trash-2" [size]="16"></lucide-icon>
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  } @else {
+    <p class="text-gray-500">Carregando...</p>
+  }
+</div>

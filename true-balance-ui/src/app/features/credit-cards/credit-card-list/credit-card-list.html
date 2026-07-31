@@ -1,0 +1,65 @@
+<div class="p-6">
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-gray-800">Cartões de Crédito</h1>
+    <a
+      routerLink="/credit-cards/new"
+      class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition"
+    >
+      Novo
+    </a>
+  </div>
+
+  @if (creditCards(); as creditCardList) {
+    @if (creditCardList.length === 0) {
+      <p class="text-gray-500">Nenhum cartão cadastrado.</p>
+    } @else {
+      <table class="w-full border-collapse bg-white shadow-sm rounded-lg overflow-hidden">
+        <thead class="bg-gray-100 text-left text-sm text-gray-600">
+          <tr>
+            <th class="px-4 py-2">Nome</th>
+            <th class="px-4 py-2">Fechamento</th>
+            <th class="px-4 py-2">Vencimento</th>
+            <th class="px-4 py-2">Limite</th>
+            <th class="px-4 py-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (creditCard of creditCardList; track creditCard.id) {
+            <tr class="border-t border-gray-200">
+              <td class="px-4 py-2">{{ creditCard.name }}</td>
+              <td class="px-4 py-2">dia {{ creditCard.closingDay }}</td>
+              <td class="px-4 py-2">dia {{ creditCard.dueDay }}</td>
+              <td class="px-4 py-2 font-medium">{{ creditCard.limit | currency: 'BRL' }}</td>
+              <td class="px-4 py-2 text-right whitespace-nowrap">
+                <a
+                  [routerLink]="['/credit-cards', creditCard.id, 'invoice']"
+                  class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-gray-100 transition text-gray-500"
+                  aria-label="Ver fatura"
+                >
+                  <lucide-icon name="receipt" [size]="16"></lucide-icon>
+                </a>
+                <a
+                  [routerLink]="['/credit-cards', creditCard.id, 'edit']"
+                  class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-gray-100 transition text-gray-500"
+                  aria-label="Editar cartão"
+                >
+                  <lucide-icon name="pencil" [size]="16"></lucide-icon>
+                </a>
+                <button
+                  type="button"
+                  (click)="deleteCreditCard(creditCard.id, creditCard.name)"
+                  class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-red-50 transition text-red-500"
+                  aria-label="Excluir cartão"
+                >
+                  <lucide-icon name="trash-2" [size]="16"></lucide-icon>
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  } @else {
+    <p class="text-gray-500">Carregando...</p>
+  }
+</div>

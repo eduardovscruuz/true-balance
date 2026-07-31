@@ -1,0 +1,75 @@
+<div class="p-6 max-w-md">
+  <h1 class="text-2xl font-bold text-gray-800 mb-6">{{ isEditMode() ? 'Editar Categoria' : 'Nova Categoria' }}</h1>
+
+  <form [formGroup]="form" (ngSubmit)="onSubmit()" class="space-y-4">
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1" for="name">
+        Nome <span class="text-red-500">*</span>
+      </label>
+      <input
+        id="name"
+        type="text"
+        formControlName="name"
+        placeholder="ex: Alimentação"
+        class="w-full border rounded-md px-3 py-2 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        [class.border-gray-300]="form.controls.name.valid || form.controls.name.untouched"
+        [class.border-red-500]="form.controls.name.invalid && form.controls.name.touched"
+      />
+      @if (form.controls.name.invalid && form.controls.name.touched) {
+        <p class="text-xs text-red-600 mt-1">Nome é obrigatório.</p>
+      }
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1" for="type">
+        Tipo <span class="text-red-500">*</span>
+      </label>
+      <select
+        id="type"
+        formControlName="type"
+        class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        <option value="Expense">Despesa</option>
+        <option value="Income">Receita</option>
+      </select>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1" for="color">
+        Cor <span class="text-red-500">*</span>
+      </label>
+      <input id="color" type="color" formControlName="color" class="h-10 w-20 border border-gray-300 rounded-md" />
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">
+        Ícone <span class="text-red-500">*</span>
+      </label>
+      <div class="flex items-center gap-3">
+        <app-icon-picker formControlName="icon" class="flex-1"></app-icon-picker>
+        <span
+          class="flex items-center justify-center w-10 h-10 rounded-md shrink-0"
+          [style.background-color]="form.controls.color.value"
+          title="Preview do ícone na cor escolhida"
+        >
+          <lucide-icon [name]="previewIconName()" [size]="18" color="white"></lucide-icon>
+        </span>
+      </div>
+      @if (form.controls.icon.invalid && form.controls.icon.touched) {
+        <p class="text-xs text-red-600 mt-1">Escolha um ícone.</p>
+      }
+    </div>
+
+    <div class="flex gap-2 pt-2">
+      <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">
+        Salvar
+      </button>
+      <a
+        routerLink="/categories"
+        class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
+      >
+        Cancelar
+      </a>
+    </div>
+  </form>
+</div>

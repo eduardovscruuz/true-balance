@@ -35,4 +35,18 @@ public class AccountsController : ControllerBase
         var created = await _accountService.AddAsync(dto);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
+
+    [HttpPut("{id:guid}")]
+    public async Task<ActionResult<AccountDto>> Update(Guid id, CreateAccountDto dto)
+    {
+        var updated = await _accountService.UpdateAsync(id, dto);
+        return updated is null ? NotFound() : Ok(updated);
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        var deleted = await _accountService.DeleteAsync(id);
+        return deleted ? NoContent() : NotFound();
+    }
 }

@@ -35,4 +35,18 @@ public class SubcategoriesController : ControllerBase
         var created = await _subcategoryService.AddAsync(dto);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
+
+    [HttpPut("{id:guid}")]
+    public async Task<ActionResult<SubcategoryDto>> Update(Guid id, CreateSubcategoryDto dto)
+    {
+        var updated = await _subcategoryService.UpdateAsync(id, dto);
+        return updated is null ? NotFound() : Ok(updated);
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        var deleted = await _subcategoryService.DeleteAsync(id);
+        return deleted ? NoContent() : NotFound();
+    }
 }

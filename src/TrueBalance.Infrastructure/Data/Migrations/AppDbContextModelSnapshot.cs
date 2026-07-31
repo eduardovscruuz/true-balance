@@ -34,6 +34,11 @@ namespace TrueBalance.Infrastructure.Data.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("balance");
 
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("color");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -43,9 +48,8 @@ namespace TrueBalance.Infrastructure.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("name");
 
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasColumnType("text")
+                    b.Property<int>("Type")
+                        .HasColumnType("integer")
                         .HasColumnName("type");
 
                     b.HasKey("Id")
@@ -111,8 +115,15 @@ namespace TrueBalance.Infrastructure.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("name");
 
+                    b.Property<Guid?>("PaymentAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("payment_account_id");
+
                     b.HasKey("Id")
                         .HasName("pk_credit_cards");
+
+                    b.HasIndex("PaymentAccountId")
+                        .HasDatabaseName("ix_credit_cards_payment_account_id");
 
                     b.ToTable("credit_cards", (string)null);
                 });
@@ -256,9 +267,21 @@ namespace TrueBalance.Infrastructure.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("installment_info");
 
+                    b.Property<int?>("InstallmentNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("installment_number");
+
                     b.Property<bool>("IsFixed")
                         .HasColumnType("boolean")
                         .HasColumnName("is_fixed");
+
+                    b.Property<int?>("RecurrenceDay")
+                        .HasColumnType("integer")
+                        .HasColumnName("recurrence_day");
+
+                    b.Property<DateTime?>("RecurrenceEndDate")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("recurrence_end_date");
 
                     b.Property<Guid?>("RecurrenceGroupId")
                         .HasColumnType("uuid")
@@ -271,6 +294,10 @@ namespace TrueBalance.Infrastructure.Data.Migrations
                     b.Property<Guid?>("SubcategoryId")
                         .HasColumnType("uuid")
                         .HasColumnName("subcategory_id");
+
+                    b.Property<int?>("TotalInstallments")
+                        .HasColumnType("integer")
+                        .HasColumnName("total_installments");
 
                     b.Property<int>("Type")
                         .HasColumnType("integer")
@@ -292,6 +319,16 @@ namespace TrueBalance.Infrastructure.Data.Migrations
                         .HasDatabaseName("ix_transactions_subcategory_id");
 
                     b.ToTable("transactions", (string)null);
+                });
+
+            modelBuilder.Entity("TrueBalance.Domain.Entities.CreditCard", b =>
+                {
+                    b.HasOne("TrueBalance.Domain.Entities.Account", "PaymentAccount")
+                        .WithMany()
+                        .HasForeignKey("PaymentAccountId")
+                        .HasConstraintName("fk_credit_cards_accounts_payment_account_id");
+
+                    b.Navigation("PaymentAccount");
                 });
 
             modelBuilder.Entity("TrueBalance.Domain.Entities.MonthlyBalance", b =>

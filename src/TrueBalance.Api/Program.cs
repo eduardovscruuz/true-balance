@@ -38,6 +38,14 @@ builder.Services.AddHttpClient<IAiAssistantService, GeminiAiService>();
 builder.Services.AddHostedService<FixedExpenseProjectionWorker>();
 builder.Services.AddHostedService<DatabaseOptimizationWorker>();
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+        policy.WithOrigins("http://localhost:4200", "http://localhost:4201")
+            .AllowAnyHeader()
+            .AllowAnyMethod());
+});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -46,6 +54,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseCors("AllowFrontend");
 
 app.UseHttpsRedirection();
 
