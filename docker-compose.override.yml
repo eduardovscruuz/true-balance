@@ -1,0 +1,38 @@
+# Aplicado automaticamente pelo `docker compose up` (mesmo via o botão Play do Docker
+# Desktop) por cima do docker-compose.yml — sem precisar de nenhuma flag extra. Troca os
+# Dockerfiles de produção (que assam o build dentro da imagem) pelos .dev, que montam o
+# código como volume e rodam em modo watch — editar um arquivo local já reflete no
+# container, sem rebuild manual. Só precisa reconstruir a imagem UMA vez, depois de criar
+# este arquivo: `docker compose up -d --build`.
+services:
+  true-balance-ui:
+    build:
+      context: ./true-balance-ui
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./true-balance-ui:/app
+      # Volume anônimo: preserva o node_modules instalado DENTRO do container (Linux),
+      # em vez de deixar o bind mount acima sobrescrever com o node_modules do Mac (se
+      # existir um localmente) — pacotes com binário nativo (esbuild, sass) quebrariam.
+      - /app/node_modules
+    # Sem "ports" aqui de propósito — o Dockerfile.dev já serve na porta 80 (em vez da
+    # 4200 padrão do ng serve) só pra reaproveitar o mapeamento "4200:80" que já existe
+    # no docker-compose.yml, sem precisar mexer/duplicar isso aqui.
+
+  true-balance-api:
+    build:
+      context: .
+      dockerfile: src/TrueBalance.Api/Dockerfile.dev
+    volumes:
+      - ./src:/src/src
+      # Mesma lógica do node_modules acima, mas por projeto: obj/bin gerados dentro do
+      # container (Linux) não podem ser sobrescritos pelos obj/bin do Mac já existentes
+      # no host — são binários de plataformas diferentes.
+      - /src/src/TrueBalance.Api/obj
+      - /src/src/TrueBalance.Api/bin
+      - /src/src/TrueBalance.Application/obj
+      - /src/src/TrueBalance.Application/bin
+      - /src/src/TrueBalance.Domain/obj
+      - /src/src/TrueBalance.Domain/bin
+      - /src/src/TrueBalance.Infrastructure/obj
+      - /src/src/TrueBalance.Infrastructure/bin

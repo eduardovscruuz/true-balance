@@ -26,9 +26,12 @@ export class MonthSelectionService {
 
   private readonly selectedMonthKey = computed(() => this.toMonthKey(this.selectedYear(), this.selectedMonth()));
 
-  readonly selectedMonthLabel = computed(() =>
-    this.selectedDate().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
-  );
+  // "agosto/2026" — o CSS "capitalize" no template (ver app.html) cuida de deixar
+  // "Agosto/2026" visualmente, sem precisar duplicar essa lógica aqui.
+  readonly selectedMonthLabel = computed(() => {
+    const monthName = this.selectedDate().toLocaleDateString('pt-BR', { month: 'long' });
+    return `${monthName}/${this.selectedYear()}`;
+  });
 
   // Limite de "mês anterior" é a transação mais antiga real (entre todas as contas),
   // não uma janela arbitrária — não existe "mês anterior" pra mostrar antes disso.

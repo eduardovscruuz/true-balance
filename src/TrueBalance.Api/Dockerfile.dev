@@ -1,0 +1,20 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0
+WORKDIR /src
+
+COPY TrueBalance.sln .
+COPY src/TrueBalance.Api/TrueBalance.Api.csproj src/TrueBalance.Api/
+COPY src/TrueBalance.Application/TrueBalance.Application.csproj src/TrueBalance.Application/
+COPY src/TrueBalance.Domain/TrueBalance.Domain.csproj src/TrueBalance.Domain/
+COPY src/TrueBalance.Infrastructure/TrueBalance.Infrastructure.csproj src/TrueBalance.Infrastructure/
+
+RUN dotnet restore TrueBalance.sln
+
+# Docker Desktop no Mac (gRPC-FUSE/VirtioFS) não propaga eventos inotify de forma
+# confiável pra binds mount — sem polling, dotnet watch não percebe os arquivos mudando.
+ENV DOTNET_USE_POLLING_FILE_WATCHER=true
+ENV DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER=true
+ENV ASPNETCORE_URLS=http://0.0.0.0:8080
+
+EXPOSE 8080
+
+CMD ["dotnet", "watch", "--project", "src/TrueBalance.Api", "run", "--no-launch-profile"]

@@ -68,7 +68,10 @@ export class TransactionForm implements OnInit {
   // Quando presente, o tipo já chega implícito e não precisa ser escolhido no formulário.
   private readonly initialType = this.resolveInitialTypeFromQueryParam();
 
-  readonly isTypeImplicit = computed(() => !this.isEditMode() && this.initialType !== null);
+  // Em edição, o tipo já foi decidido na criação e não faz mais sentido escolher de
+  // novo — o título do formulário (ver formTitle) já indica "Editar Despesa"/"Editar
+  // Receita" no lugar do toggle.
+  readonly isTypeImplicit = computed(() => this.isEditMode() || this.initialType !== null);
 
   // Vindo do botão "Nova Despesa de Cartão" (?source=credit-card), ou detectado ao
   // carregar uma transação existente que já tem CreditCardId em vez de AccountId.
@@ -78,7 +81,7 @@ export class TransactionForm implements OnInit {
 
   readonly formTitle = computed(() => {
     if (this.isEditMode()) {
-      return 'Editar Transação';
+      return this.selectedType() === 'Income' ? 'Editar Receita' : 'Editar Despesa';
     }
 
     if (this.initialType === 'Expense' && this.isCreditCardMode()) {
@@ -87,6 +90,12 @@ export class TransactionForm implements OnInit {
 
     if (this.initialType === 'Income' && this.isCreditCardMode()) {
       return 'Registrar Estorno';
+    }
+
+    // Botão único "Cartão" (dashboard/header) não vem mais com type pré-definido — o
+    // Tipo (Despesa ou Estorno) é escolhido aqui dentro, no toggle (ver isTypeImplicit).
+    if (this.isCreditCardMode()) {
+      return 'Novo Lançamento de Cartão';
     }
 
     if (this.initialType === 'Expense') {
@@ -753,6 +762,48 @@ export class TransactionForm implements OnInit {
       : this.transactionService.update(id, dto);
 
     request$.subscribe(() => this.router.navigate(['/transactions']));
+  }
+
+  // Botão "Excluir" só existe em edição — vem da tabela de transações, que agora só
+  // navega pra cá (a linha inteira leva pra edição; excluir mora dentro do formulário).
+  deleteTransaction(): void {
+    const id = this.transactionId();
+
+    if (id === null) {
+      return;
+    }
+
+    const description = this.form.controls.description.value;
+    const recurrenceGroupId = this.originalRecurrenceGroupId;
+
+    // Transação avulsa (sem série): confirmação simples de sempre.
+    if (recurrenceGroupId === null) {
+      if (!confirm(`Excluir a transação "${description}"? Essa ação não pode ser desfeita.`)) {
+        return;
+      }
+
+      this.transactionService.delete(id).subscribe(() => this.router.navigate(['/transactions']));
+      return;
+    }
+
+    // Faz parte de uma série (fixa ou parcelada): oferece excluir só esta ocorrência ou
+    // esta e todas as próximas pendentes da série (as já pagas nunca são afetadas).
+    const deleteWholeSeries = confirm(
+      `"${description}" faz parte de uma recorrência (fixa ou parcelada).\n\n` +
+        `Clique OK para excluir esta e todas as próximas ocorrências PENDENTES da série.\n` +
+        `Clique Cancelar para excluir só esta ocorrência.`,
+    );
+
+    if (deleteWholeSeries) {
+      this.transactionService.deleteSeries(id).subscribe(() => this.router.navigate(['/transactions']));
+      return;
+    }
+
+    if (!confirm(`Excluir apenas esta ocorrência de "${description}"? Essa ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    this.transactionService.delete(id).subscribe(() => this.router.navigate(['/transactions']));
   }
 
   // Preserva Cartão/Conta/Tipo (o contexto do lote que está sendo lançado) e limpa o

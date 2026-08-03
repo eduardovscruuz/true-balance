@@ -1,36 +1,6 @@
 <div class="p-6">
   <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-bold text-gray-800">Transações do Mês</h1>
-    <div class="flex gap-2">
-      <a
-        routerLink="/transactions/new"
-        [queryParams]="{ type: 'Expense' }"
-        class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition"
-      >
-        Nova Despesa
-      </a>
-      <a
-        routerLink="/transactions/new"
-        [queryParams]="{ type: 'Income' }"
-        class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition"
-      >
-        Nova Receita
-      </a>
-      <a
-        routerLink="/transactions/new"
-        [queryParams]="{ type: 'Expense', source: 'credit-card' }"
-        class="bg-gray-800 text-white px-4 py-2 rounded-md hover:bg-gray-900 transition"
-      >
-        Nova Despesa de Cartão
-      </a>
-      <a
-        routerLink="/transactions/new"
-        [queryParams]="{ type: 'Income', source: 'credit-card' }"
-        class="border border-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-50 transition"
-      >
-        Estorno de Cartão
-      </a>
-    </div>
   </div>
 
   @if (rows(); as rowList) {
@@ -62,7 +32,10 @@
         <tbody>
           @for (row of rowList; track row.kind === 'transaction' ? row.id : row.creditCardId + row.invoiceMonthLabel) {
             @if (row.kind === 'cardInvoice') {
-              <tr class="border-t border-gray-200 bg-gray-50">
+              <tr
+                [routerLink]="['/credit-cards', row.creditCardId, 'invoice']"
+                class="border-t border-gray-200 bg-gray-50 cursor-pointer hover:bg-gray-100 transition"
+              >
                 <td class="px-4 py-2 text-gray-600">{{ row.date | date: 'dd/MM' : 'UTC' }}</td>
                 <td class="px-4 py-2">
                   <span class="font-medium text-gray-800">Fatura de {{ row.invoiceMonthLabel }}</span>
@@ -110,19 +83,13 @@
                 >
                   {{ row.amount > 0 ? '-' : '+' }}{{ (row.amount > 0 ? row.amount : -row.amount) | currency: 'BRL' }}
                 </td>
-                <td class="px-4 py-2 text-right whitespace-nowrap">
-                  <a
-                    [routerLink]="['/credit-cards', row.creditCardId, 'invoice']"
-                    class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-gray-100 transition text-gray-500"
-                    aria-label="Ver fatura"
-                    title="Ver fatura"
-                  >
-                    <lucide-icon name="receipt" [size]="16"></lucide-icon>
-                  </a>
-                </td>
+                <td class="px-4 py-2 text-right whitespace-nowrap"></td>
               </tr>
             } @else {
-              <tr class="border-t border-gray-200">
+              <tr
+                [routerLink]="['/transactions', row.id, 'edit']"
+                class="border-t border-gray-200 cursor-pointer hover:bg-gray-50 transition"
+              >
                 <td class="px-4 py-2 text-gray-600">{{ row.date | date: 'dd/MM' : 'UTC' }}</td>
                 <td class="px-4 py-2">
                   {{ row.description }}
@@ -170,22 +137,17 @@
                   {{ row.type === 'Expense' ? '-' : '+' }}{{ row.amount | currency: 'BRL' }}
                 </td>
                 <td class="px-4 py-2 text-right whitespace-nowrap">
-                  <a
-                    [routerLink]="['/transactions', row.id, 'edit']"
-                    class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-gray-100 transition text-gray-500"
-                    [attr.aria-label]="row.status === 'Pending' ? 'Confirmar recebimento/pagamento' : 'Editar transação'"
-                    [title]="row.status === 'Pending' ? 'Confirmar e ajustar valor, se necessário' : 'Editar'"
-                  >
-                    <lucide-icon name="pencil" [size]="16"></lucide-icon>
-                  </a>
-                  <button
-                    type="button"
-                    (click)="deleteTransaction(row.id, row.description, row.recurrenceGroupId)"
-                    class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-red-50 transition text-red-500"
-                    aria-label="Excluir transação"
-                  >
-                    <lucide-icon name="trash-2" [size]="16"></lucide-icon>
-                  </button>
+                  @if (row.status === 'Pending') {
+                    <button
+                      type="button"
+                      (click)="openConfirmModal(row.id, $event)"
+                      class="inline-flex items-center justify-center w-24 px-3 py-1.5 rounded-md text-xs font-semibold uppercase text-white transition {{
+                        row.type === 'Income' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+                      }}"
+                    >
+                      {{ row.type === 'Income' ? 'Receber' : 'Pagar' }}
+                    </button>
+                  }
                 </td>
               </tr>
             }
@@ -195,5 +157,68 @@
     }
   } @else {
     <p class="text-gray-500">Carregando...</p>
+  }
+
+  @if (confirmModal(); as transaction) {
+    <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50" (click)="closeConfirmModal()">
+      <div class="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full mx-4" (click)="$event.stopPropagation()">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-gray-800">
+            {{ transaction.type === 'Income' ? 'Confirmar recebimento' : 'Confirmar pagamento' }}
+          </h3>
+          <button type="button" (click)="closeConfirmModal()" class="text-gray-400 hover:text-gray-600" aria-label="Fechar">
+            <lucide-icon name="x" [size]="18"></lucide-icon>
+          </button>
+        </div>
+
+        <p class="text-sm text-gray-600 mb-4">
+          {{ transaction.type === 'Income' ? 'Você está recebendo' : 'Você está pagando' }}
+          <span class="font-medium text-gray-800">{{ transaction.description }}</span>. Confira o valor e a data e ajuste
+          se necessário.
+        </p>
+
+        <div class="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Valor</label>
+            <input
+              type="text"
+              inputmode="numeric"
+              appCurrencyMask
+              [ngModel]="confirmAmount()"
+              (ngModelChange)="confirmAmount.set($event)"
+              class="w-full border border-gray-300 rounded-md px-3 py-2"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Data</label>
+            <input
+              type="date"
+              [ngModel]="confirmDate()"
+              (ngModelChange)="confirmDate.set($event)"
+              class="w-full border border-gray-300 rounded-md px-3 py-2"
+            />
+          </div>
+        </div>
+
+        <div class="flex gap-2 justify-end">
+          <button
+            type="button"
+            (click)="closeConfirmModal()"
+            class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            (click)="confirmPayment()"
+            class="px-4 py-2 rounded-md text-white transition {{
+              transaction.type === 'Income' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+            }}"
+          >
+            Confirmar {{ transaction.type === 'Income' ? 'recebimento' : 'pagamento' }}
+          </button>
+        </div>
+      </div>
+    </div>
   }
 </div>

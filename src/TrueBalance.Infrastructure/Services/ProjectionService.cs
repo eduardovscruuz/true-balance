@@ -23,7 +23,15 @@ public class ProjectionService : IProjectionService
             .Where(t => t.IsFixed && t.RecurrenceGroupId != null)
             .ToListAsync(stoppingToken);
 
-        var deadline = DateTime.UtcNow.AddMonths(ProjectionWindowMonths);
+        // Início do mês corrente + N meses, não "agora + N meses" — senão o mês limite
+        // fica cortado no dia-do-mês em que o worker rodou (ex: worker roda todo dia 3,
+        // deadline vira "3 de agosto/2028", e qualquer recorrência com dia > 3 nesse mês
+        // — a esmagadora maioria — não é gerada, mesmo estando dentro da janela de 24
+        // meses). Usando o início do mês seguinte ao 24º como limite, o mês inteiro (do
+        // dia 1 ao último dia) fica coberto, batendo com a janela por MÊS-CALENDÁRIO que
+        // o front-end assume (ver MonthSelectionService.maxMonthKey).
+        var currentMonthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var deadline = currentMonthStart.AddMonths(ProjectionWindowMonths + 1);
         var newTransactions = new List<Transaction>();
 
         var groups = fixedTransactions.GroupBy(t => t.RecurrenceGroupId);

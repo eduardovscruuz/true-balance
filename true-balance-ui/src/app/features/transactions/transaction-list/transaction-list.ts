@@ -2,6 +2,7 @@ import { CurrencyPipe, DatePipe } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { switchMap } from 'rxjs';
+import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
 
@@ -11,6 +12,8 @@ import { CreditCardService } from '../../../core/services/credit-card.service';
 import { MonthSelectionService } from '../../../core/services/month-selection.service';
 import { SubcategoryService } from '../../../core/services/subcategory.service';
 import { TransactionService } from '../../../core/services/transaction.service';
+import { CreateTransaction, Transaction } from '../../../core/models/transaction.model';
+import { CurrencyMaskDirective } from '../../../shared/directives/currency-mask.directive';
 import { InitialsPipe } from '../../../shared/pipes/initials.pipe';
 import { resolveLucideIconName } from '../../../shared/utils/lucide-icon.util';
 import {
@@ -23,7 +26,7 @@ import {
 
 @Component({
   selector: 'app-transaction-list',
-  imports: [RouterLink, CurrencyPipe, DatePipe, LucideAngularModule, InitialsPipe],
+  imports: [RouterLink, CurrencyPipe, DatePipe, LucideAngularModule, InitialsPipe, FormsModule, CurrencyMaskDirective],
   templateUrl: './transaction-list.html',
   styleUrl: './transaction-list.scss',
 })
@@ -191,34 +194,61 @@ export class TransactionList {
     );
   });
 
-  deleteTransaction(id: string, description: string, recurrenceGroupId: string | null): void {
-    // Transação avulsa (sem série): confirmação simples de sempre.
-    if (recurrenceGroupId === null) {
-      if (!confirm(`Excluir a transação "${description}"? Essa ação não pode ser desfeita.`)) {
-        return;
-      }
+  readonly confirmModal = signal<Transaction | null>(null);
+  readonly confirmAmount = signal<number>(0);
+  // Formato "yyyy-MM-dd" (o que o <input type="date"> espera) — pré-preenchido com hoje
+  // (o caso mais comum), mas editável: nem todo pagamento é confirmado no mesmo dia em
+  // que ele de fato aconteceu (ex: confirmando hoje um pagamento que já foi feito ontem).
+  readonly confirmDate = signal<string>('');
 
-      this.transactionService.delete(id).subscribe(() => this.refreshTrigger.update((n) => n + 1));
+  // Botão "Receber"/"Pagar" da tabela: abre modal de confirmação em vez de ir direto
+  // pro formulário, já que o valor pode precisar de ajuste (ex: salário com hora extra,
+  // desconto por pagar adiantado) antes de confirmar. stopPropagation evita disparar a
+  // navegação da linha (que leva pra edição).
+  openConfirmModal(id: string, event: Event): void {
+    event.stopPropagation();
+
+    const transaction = this.allTransactions()?.find((t) => t.id === id);
+    if (!transaction) {
       return;
     }
 
-    // Faz parte de uma série (fixa ou parcelada): oferece excluir só esta ocorrência ou
-    // esta e todas as próximas pendentes da série (as já pagas nunca são afetadas).
-    const deleteWholeSeries = confirm(
-      `"${description}" faz parte de uma recorrência (fixa ou parcelada).\n\n` +
-        `Clique OK para excluir esta e todas as próximas ocorrências PENDENTES da série.\n` +
-        `Clique Cancelar para excluir só esta ocorrência.`,
-    );
+    this.confirmModal.set(transaction);
+    this.confirmAmount.set(transaction.amount);
+    this.confirmDate.set(this.todayAsInputValue());
+  }
 
-    if (deleteWholeSeries) {
-      this.transactionService.deleteSeries(id).subscribe(() => this.refreshTrigger.update((n) => n + 1));
+  closeConfirmModal(): void {
+    this.confirmModal.set(null);
+  }
+
+  confirmPayment(): void {
+    const transaction = this.confirmModal();
+    if (!transaction) {
       return;
     }
 
-    if (!confirm(`Excluir apenas esta ocorrência de "${description}"? Essa ação não pode ser desfeita.`)) {
-      return;
-    }
+    const { id, ...rest } = transaction;
+    const dto: CreateTransaction = {
+      ...rest,
+      amount: this.confirmAmount(),
+      status: 'Paid',
+      // A data da transação passa a ser o dia em que ela foi de fato recebida/paga —
+      // paidDate é reservado só pra fatura de cartão (ver Transaction.paidDate).
+      date: `${this.confirmDate()}T00:00:00Z`,
+    };
 
-    this.transactionService.delete(id).subscribe(() => this.refreshTrigger.update((n) => n + 1));
+    this.transactionService.update(id, dto).subscribe(() => {
+      this.confirmModal.set(null);
+      this.refreshTrigger.update((n) => n + 1);
+    });
+  }
+
+  private todayAsInputValue(): string {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 }

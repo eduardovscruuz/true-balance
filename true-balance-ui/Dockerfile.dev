@@ -1,0 +1,11 @@
+FROM node:20-alpine
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+# Porta 80 pra bater com o mapeamento "4200:80" já existente no docker-compose.yml —
+# assim não precisa duplicar/mexer em "ports" no override.
+EXPOSE 80
+
+CMD ["npm", "start", "--", "--host", "0.0.0.0", "--port", "80", "--poll", "2000", "--allowed-hosts"]

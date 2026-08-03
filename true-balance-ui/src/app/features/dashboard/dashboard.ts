@@ -1,7 +1,8 @@
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { distinctUntilChanged, map, switchMap } from 'rxjs';
+import { RouterLink } from '@angular/router';
+import { switchMap } from 'rxjs';
 import { LucideAngularModule } from 'lucide-angular';
 
 import { InitialsPipe } from '../../shared/pipes/initials.pipe';
@@ -9,7 +10,6 @@ import { AccountService } from '../../core/services/account.service';
 import { CategoryService } from '../../core/services/category.service';
 import { CreditCardService } from '../../core/services/credit-card.service';
 import { MonthSelectionService } from '../../core/services/month-selection.service';
-import { ReportService } from '../../core/services/report.service';
 import { SubcategoryService } from '../../core/services/subcategory.service';
 import { TransactionService } from '../../core/services/transaction.service';
 import { resolveLucideIconName } from '../../shared/utils/lucide-icon.util';
@@ -77,12 +77,11 @@ interface CashFlowEntry {
 
 @Component({
   selector: 'app-dashboard',
-  imports: [CurrencyPipe, DatePipe, InitialsPipe, LucideAngularModule],
+  imports: [CurrencyPipe, DatePipe, InitialsPipe, LucideAngularModule, RouterLink],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss',
 })
 export class Dashboard {
-  private readonly reportService = inject(ReportService);
   private readonly transactionService = inject(TransactionService);
   private readonly accountService = inject(AccountService);
   private readonly categoryService = inject(CategoryService);
@@ -132,16 +131,91 @@ export class Dashboard {
 
   private readonly yearMonth$ = toObservable(this.yearMonth);
 
-  // Saldos são anuais: só refaz a chamada quando o ANO muda, não a cada troca de mês.
-  private readonly rawBalances = toSignal(
-    this.yearMonth$.pipe(
-      map(({ year }) => year),
-      distinctUntilChanged(),
-      switchMap((year) => this.reportService.getBalances(year)),
-    ),
-  );
+  // Data da transação (ou fatura vinculada) mais antiga desta conta — não faz sentido
+  // mostrar "Saldos Mensais" pra um mês anterior a isso: seria só repetir o saldo de
+  // abertura da conta sem nenhum dado real por trás.
+  private readonly earliestActiveAccountDateMs = computed(() => {
+    const accountId = this.activeAccountId();
 
-  readonly balances = computed(() => this.rawBalances()?.filter((b) => b.accountId === this.activeAccountId()));
+    if (accountId === null) {
+      return null;
+    }
+
+    const linkedCardIds = new Set(
+      this.creditCards()
+        .filter((card) => card.paymentAccountId === accountId)
+        .map((card) => card.id),
+    );
+
+    const dates = this.allTransactions()
+      .filter((t) => t.accountId === accountId || (t.creditCardId !== null && linkedCardIds.has(t.creditCardId)))
+      .map((t) => new Date(t.paidDate ?? t.date).getTime());
+
+    return dates.length > 0 ? Math.min(...dates) : null;
+  });
+
+  // Mesmo cálculo da Previsão de Saldo (saldo de abertura + delta acumulado), mas só com
+  // transações PAGAS — saldo histórico de um mês já fechado é um fato assentado, não uma
+  // projeção, então pendente (que ainda pode mudar ou nem acontecer) não conta aqui.
+  private paidCumulativeDeltaUpTo(accountId: string, cutoffMs: number): number {
+    const ownDelta = this.allTransactions()
+      .filter((t) => t.accountId === accountId && t.status === 'Paid')
+      .filter((t) => new Date(t.date).getTime() <= cutoffMs)
+      .reduce((sum, t) => sum + this.accountDelta(t), 0);
+
+    const linkedCardIds = new Set(
+      this.creditCards()
+        .filter((card) => card.paymentAccountId === accountId)
+        .map((card) => card.id),
+    );
+
+    const cardDelta = this.allTransactions()
+      .filter((t) => t.creditCardId !== null && linkedCardIds.has(t.creditCardId) && t.status === 'Paid')
+      .filter((t) => new Date(t.paidDate ?? t.date).getTime() <= cutoffMs)
+      .reduce((sum, t) => sum + this.accountDelta(t), 0);
+
+    return ownDelta + cardDelta;
+  }
+
+  // Saldo REAL acumulado no fechamento de cada mês passado (quanto a conta tinha ao
+  // FINAL daquele mês) — não o fluxo isolado do mês, que reiniciaria do zero e ignoraria
+  // o saldo que já vinha acumulado. Só lista meses que já fecharam de verdade (o mês
+  // corrente ainda está em andamento, seu "saldo final" não existe ainda — esse já
+  // aparece acima, em Previsão de Saldo/Saldo Atual) e que já têm alguma transação real.
+  readonly historicalBalances = computed(() => {
+    const accountId = this.activeAccountId();
+    const account = this.accounts().find((a) => a.id === accountId);
+    const earliestMs = this.earliestActiveAccountDateMs();
+
+    if (!account || accountId === null || earliestMs === null) {
+      return [];
+    }
+
+    const year = this.selectedYear();
+    const nowMs = this.today.getTime();
+    const rows: { id: string; label: string; closingBalance: number }[] = [];
+
+    for (let month = 1; month <= 12; month++) {
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const monthEndMs = Date.UTC(year, month - 1, daysInMonth, 23, 59, 59, 999);
+
+      if (monthEndMs < earliestMs || monthEndMs >= nowMs) {
+        continue;
+      }
+
+      // "julho/2026" — o CSS "capitalize" no template deixa "Julho/2026" visualmente,
+      // mesmo estilo do seletor de mês na barra de navegação (ver MonthSelectionService).
+      const monthName = new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'long' });
+
+      rows.push({
+        id: `${year}-${month}`,
+        label: `${monthName}/${year}`,
+        closingBalance: account.balance + this.paidCumulativeDeltaUpTo(accountId, monthEndMs),
+      });
+    }
+
+    return rows;
+  });
 
   private readonly rawTransactions = toSignal(
     this.yearMonth$.pipe(switchMap(({ year, month }) => this.transactionService.getByMonth(year, month))),

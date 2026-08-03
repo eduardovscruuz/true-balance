@@ -1,8 +1,10 @@
 // Badge "gordinho", cantos pouco arredondados, maiúsculo, borda fina na cor do texto —
 // usado pra status de pagamento em vários lugares (Fatura do Cartão, Transações do Mês,
 // Resumo do Mês no Dashboard). Centralizado aqui pra não os três lugares saírem do padrão
-// um do outro com o tempo.
-export const STATUS_BADGE_BASE_CLASS = 'inline-flex items-center px-3 py-1.5 rounded-md text-[10px] font-semibold uppercase border';
+// um do outro com o tempo. Largura fixa (comporta o texto mais longo, "Pago em atraso")
+// com o texto centralizado — todo badge fica do mesmo tamanho, não só do tamanho do texto.
+export const STATUS_BADGE_BASE_CLASS =
+  'inline-flex items-center justify-center w-36 px-3 py-1.5 rounded-md text-[10px] font-semibold uppercase border';
 
 export const STATUS_BADGE_CLASS: Record<'Paid' | 'Pending', string> = {
   Paid: 'bg-green-50 text-green-700 border-green-700',
