@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 
 import { AccountForm } from './features/accounts/account-form/account-form';
+import { AiTransactionEntry } from './features/ai-transaction-entry/ai-transaction-entry';
 import { AccountList } from './features/accounts/account-list/account-list';
 import { CategoryForm } from './features/categories/category-form/category-form';
 import { CategoryList } from './features/categories/category-list/category-list';
@@ -29,6 +30,7 @@ export const routes: Routes = [
   { path: 'credit-cards/:id/edit', component: CreditCardForm },
   { path: 'credit-cards/:id/invoice', component: CreditCardInvoice },
   { path: 'transactions', component: TransactionList },
+  { path: 'transactions/ai', component: AiTransactionEntry },
   { path: 'transactions/new', component: TransactionForm },
   { path: 'transactions/:id/edit', component: TransactionForm },
 ];

@@ -1,0 +1,455 @@
+<div class="p-6 max-w-6xl">
+  <h1 class="text-2xl font-bold text-gray-800 mb-6">Lançar com IA</h1>
+
+  @if (!proposals()) {
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1" for="ai-prompt"> Descreva as transações </label>
+        <textarea
+          id="ai-prompt"
+          rows="6"
+          [(ngModel)]="promptText"
+          placeholder="Ex: gastei 45 reais no mercado hoje, recebi 200 de freela ontem, paguei 120 de gasolina"
+          class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        ></textarea>
+        <p class="text-xs text-gray-500 mt-1">
+          Cole o texto (ex: transcrito por voz) descrevendo uma ou mais transações. A IA sugere categoria, tipo,
+          valor e data — você confere tudo antes de salvar.
+        </p>
+      </div>
+
+      @if (errorMessage()) {
+        <p class="text-sm text-red-600">{{ errorMessage() }}</p>
+      }
+
+      <div class="flex gap-2">
+        <button
+          type="button"
+          (click)="analyze()"
+          [disabled]="loading() || !promptText().trim()"
+          class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {{ loading() ? 'Analisando...' : 'Analisar' }}
+        </button>
+        <a
+          routerLink="/transactions"
+          class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
+        >
+          Cancelar
+        </a>
+      </div>
+    </div>
+  } @else {
+    <div class="space-y-6">
+      @if (proposals()!.length > 0) {
+        <p class="text-sm text-gray-600">
+          A IA sugeriu {{ proposals()!.length }}
+          {{ proposals()!.length === 1 ? 'transação' : 'transações' }}. Confira e ajuste o que precisar antes de
+          salvar.
+        </p>
+      } @else {
+        <p class="text-gray-500">Nenhuma transação foi identificada nesse texto.</p>
+      }
+
+      @if (pendingMatchRows().length > 0) {
+        <div>
+          <h2 class="text-sm font-semibold text-blue-800 mb-2">
+            Confirmando pendências existentes ({{ pendingMatchRows().length }})
+          </h2>
+          <div class="bg-white shadow-sm rounded-lg overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-gray-100 text-left text-xs text-gray-600">
+                <tr>
+                  <th class="px-4 py-2">Data</th>
+                  <th class="px-4 py-2">Descrição</th>
+                  <th class="px-4 py-2">Categoria</th>
+                  <th class="px-4 py-2">Conta</th>
+                  <th class="px-4 py-2">Status</th>
+                  <th class="px-4 py-2 text-right">Valor</th>
+                  <th class="px-4 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of pendingMatchRows(); track row.localId) {
+                  <tr class="border-t border-gray-200 bg-blue-50">
+                    @if (!row.isEditing) {
+                      <td class="px-4 py-2 text-gray-600 whitespace-nowrap">{{ formatDateDisplay(row.date) }}</td>
+                      <td class="px-4 py-2 text-gray-800">{{ row.description }}</td>
+                      <td class="px-4 py-2 text-gray-600">
+                        <div class="flex items-center gap-2">
+                          <span
+                            class="flex items-center justify-center w-7 h-7 rounded-full shrink-0"
+                            [style.background-color]="categoryColor(row.categoryId)"
+                          >
+                            <lucide-icon [name]="resolveIconName(categoryIcon(row.categoryId))" [size]="14" color="white"></lucide-icon>
+                          </span>
+                          <span>{{ categoryName(row.categoryId) }}</span>
+                        </div>
+                      </td>
+                      <td class="px-4 py-2 text-gray-600">
+                        <div class="flex items-center gap-2">
+                          <span
+                            class="flex items-center justify-center w-6 h-6 rounded-md text-white text-[10px] font-semibold shrink-0"
+                            [style.background-color]="accountColor(row.accountId)"
+                          >
+                            {{ accountName(row.accountId) | initials }}
+                          </span>
+                          <span>{{ accountName(row.accountId) }}</span>
+                        </div>
+                      </td>
+                      <td class="px-4 py-2">
+                        <div class="flex items-center gap-1">
+                          <span class="{{ compactBadgeBaseClass }} {{ statusBadgeClass['Pending'] }} opacity-50 line-through">
+                            Pendente
+                          </span>
+                          <lucide-icon name="arrow-right" [size]="10" class="text-gray-400 shrink-0"></lucide-icon>
+                          <span class="{{ compactBadgeBaseClass }} {{ statusBadgeClass['Paid'] }}">Pago</span>
+                        </div>
+                      </td>
+                      <td class="px-4 py-2 text-right">
+                        <div class="flex flex-col items-end">
+                          @if (row.matchedPendingAmount !== null && row.matchedPendingAmount !== row.amount) {
+                            <span class="text-xs text-gray-400 line-through">
+                              {{ row.type === 'Expense' ? '-' : '+' }}{{ row.matchedPendingAmount | currency: 'BRL' }}
+                            </span>
+                          }
+                          <span
+                            class="font-medium"
+                            [class.text-red-600]="row.type === 'Expense'"
+                            [class.text-green-600]="row.type === 'Income'"
+                          >
+                            {{ row.type === 'Expense' ? '-' : '+' }}{{ row.amount | currency: 'BRL' }}
+                          </span>
+                        </div>
+                      </td>
+                      <td class="px-4 py-2 text-right whitespace-nowrap">
+                        <button
+                          type="button"
+                          (click)="declineMatch(row)"
+                          class="text-gray-400 hover:text-blue-600 transition mr-1"
+                          aria-label="Desvincular, tratar como transação nova"
+                          title="Desvincular — tratar como transação nova"
+                        >
+                          <lucide-icon name="unlink" [size]="14"></lucide-icon>
+                        </button>
+                        <button
+                          type="button"
+                          (click)="toggleEdit(row)"
+                          class="text-gray-400 hover:text-blue-600 transition mr-1"
+                          aria-label="Editar"
+                          title="Editar"
+                        >
+                          <lucide-icon name="pencil" [size]="14"></lucide-icon>
+                        </button>
+                        <button
+                          type="button"
+                          (click)="removeRow(row.localId)"
+                          class="text-gray-400 hover:text-red-600 transition"
+                          aria-label="Remover esta transação da lista"
+                          title="Remover"
+                        >
+                          <lucide-icon name="trash-2" [size]="14"></lucide-icon>
+                        </button>
+                      </td>
+                    } @else {
+                      <td class="px-4 py-2">
+                        <input type="date" [(ngModel)]="row.date" class="border border-gray-300 rounded px-1.5 py-1" />
+                      </td>
+                      <td class="px-4 py-2">
+                        <input
+                          type="text"
+                          [(ngModel)]="row.description"
+                          class="w-full min-w-40 border border-gray-300 rounded px-2 py-1"
+                        />
+                      </td>
+                      <td class="px-4 py-2">
+                        <select [(ngModel)]="row.categoryId" class="border border-gray-300 rounded px-1.5 py-1 min-w-28">
+                          <option value="">Selecione</option>
+                          @for (category of categoriesForType(row.type); track category.id) {
+                            <option [value]="category.id">{{ category.name }}</option>
+                          }
+                        </select>
+                      </td>
+                      <td class="px-4 py-2">
+                        <select [(ngModel)]="row.accountId" class="border border-gray-300 rounded px-1.5 py-1">
+                          <option value="">Selecione</option>
+                          @for (account of accounts(); track account.id) {
+                            <option [value]="account.id">{{ account.name }}</option>
+                          }
+                        </select>
+                      </td>
+                      <td class="px-4 py-2 text-xs text-gray-500">Pendente → Pago</td>
+                      <td class="px-4 py-2 text-right">
+                        <input
+                          type="text"
+                          inputmode="numeric"
+                          appCurrencyMask
+                          [(ngModel)]="row.amount"
+                          class="w-24 border border-gray-300 rounded px-2 py-1 text-right font-medium"
+                        />
+                      </td>
+                      <td class="px-4 py-2 text-right whitespace-nowrap">
+                        <button
+                          type="button"
+                          (click)="toggleEdit(row)"
+                          class="text-green-600 hover:text-green-700 transition mr-1"
+                          aria-label="Concluir edição"
+                          title="Concluir edição"
+                        >
+                          <lucide-icon name="check" [size]="14"></lucide-icon>
+                        </button>
+                        <button
+                          type="button"
+                          (click)="removeRow(row.localId)"
+                          class="text-gray-400 hover:text-red-600 transition"
+                          aria-label="Remover esta transação da lista"
+                          title="Remover"
+                        >
+                          <lucide-icon name="trash-2" [size]="14"></lucide-icon>
+                        </button>
+                      </td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      }
+
+      @if (newIncomeRows().length > 0) {
+        <div>
+          <h2 class="text-sm font-semibold text-green-700 mb-2">Novas receitas ({{ newIncomeRows().length }})</h2>
+          <ng-container *ngTemplateOutlet="newRowsTable; context: { $implicit: newIncomeRows() }"></ng-container>
+        </div>
+      }
+
+      @if (newExpenseRows().length > 0) {
+        <div>
+          <h2 class="text-sm font-semibold text-red-700 mb-2">Novas despesas ({{ newExpenseRows().length }})</h2>
+          <ng-container *ngTemplateOutlet="newRowsTable; context: { $implicit: newExpenseRows() }"></ng-container>
+        </div>
+      }
+
+      <ng-template #newRowsTable let-rows>
+        <div class="bg-white shadow-sm rounded-lg overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-100 text-left text-xs text-gray-600">
+              <tr>
+                <th class="px-4 py-2">Data</th>
+                <th class="px-4 py-2">Descrição</th>
+                <th class="px-4 py-2">Categoria</th>
+                <th class="px-4 py-2">Conta</th>
+                <th class="px-4 py-2 text-right">Valor</th>
+                <th class="px-4 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of rows; track row.localId) {
+                @if (row.matchedPendingTransactionId) {
+                  <tr class="border-t border-gray-200 bg-amber-50">
+                    <td colspan="6" class="px-4 py-2">
+                      <div class="flex items-center gap-2 text-xs text-gray-700">
+                        <lucide-icon name="circle-question-mark" [size]="14" class="text-amber-600 shrink-0"></lucide-icon>
+                        <span>É a pendência <strong>{{ row.matchedPendingLabel }}</strong>?</span>
+                        <button
+                          type="button"
+                          (click)="declineMatch(row)"
+                          class="ml-auto inline-flex items-center gap-1 px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-100 transition"
+                        >
+                          <lucide-icon name="x" [size]="12"></lucide-icon>
+                          Não, é nova
+                        </button>
+                        <button
+                          type="button"
+                          (click)="acceptMatch(row)"
+                          class="inline-flex items-center gap-1 px-2 py-1 rounded bg-green-600 text-white hover:bg-green-700 transition"
+                        >
+                          <lucide-icon name="check" [size]="12"></lucide-icon>
+                          Sim, é essa
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                }
+                <tr class="border-t border-gray-200">
+                  @if (!row.isEditing) {
+                    <td class="px-4 py-2 text-gray-600 whitespace-nowrap">{{ formatDateDisplay(row.date) }}</td>
+                    <td class="px-4 py-2 text-gray-800">{{ row.description }}</td>
+                    <td class="px-4 py-2 text-gray-600">
+                      <div class="flex items-center gap-2">
+                        <span
+                          class="flex items-center justify-center w-7 h-7 rounded-full shrink-0"
+                          [style.background-color]="categoryColor(row.categoryId)"
+                        >
+                          <lucide-icon [name]="resolveIconName(categoryIcon(row.categoryId))" [size]="14" color="white"></lucide-icon>
+                        </span>
+                        <span>{{ categoryName(row.categoryId) }}</span>
+                      </div>
+                    </td>
+                    <td class="px-4 py-2 text-gray-600">
+                      <div class="flex items-center gap-2">
+                        <span
+                          class="flex items-center justify-center w-6 h-6 rounded-md text-white text-[10px] font-semibold shrink-0"
+                          [style.background-color]="accountColor(row.accountId)"
+                        >
+                          {{ accountName(row.accountId) | initials }}
+                        </span>
+                        <span>{{ accountName(row.accountId) }}</span>
+                      </div>
+                    </td>
+                    <td
+                      class="px-4 py-2 text-right font-medium"
+                      [class.text-red-600]="row.type === 'Expense'"
+                      [class.text-green-600]="row.type === 'Income'"
+                    >
+                      {{ row.type === 'Expense' ? '-' : '+' }}{{ row.amount | currency: 'BRL' }}
+                    </td>
+                    <td class="px-4 py-2 text-right whitespace-nowrap">
+                      <button
+                        type="button"
+                        (click)="toggleEdit(row)"
+                        class="text-gray-400 hover:text-blue-600 transition mr-1"
+                        aria-label="Editar"
+                        title="Editar"
+                      >
+                        <lucide-icon name="pencil" [size]="14"></lucide-icon>
+                      </button>
+                      <button
+                        type="button"
+                        (click)="removeRow(row.localId)"
+                        class="text-gray-400 hover:text-red-600 transition"
+                        aria-label="Remover esta transação da lista"
+                        title="Remover"
+                      >
+                        <lucide-icon name="trash-2" [size]="14"></lucide-icon>
+                      </button>
+                    </td>
+                  } @else {
+                    <td class="px-4 py-2">
+                      <input type="date" [(ngModel)]="row.date" class="border border-gray-300 rounded px-1.5 py-1" />
+                    </td>
+                    <td class="px-4 py-2">
+                      <input
+                        type="text"
+                        [(ngModel)]="row.description"
+                        class="w-full min-w-40 border border-gray-300 rounded px-2 py-1"
+                      />
+                    </td>
+                    <td class="px-4 py-2">
+                      <select
+                        [(ngModel)]="row.categoryId"
+                        class="border rounded px-1.5 py-1 min-w-28"
+                        [class.border-red-400]="!row.categoryId"
+                        [class.border-gray-300]="!!row.categoryId"
+                      >
+                        <option value="">Selecione</option>
+                        @for (category of categoriesForType(row.type); track category.id) {
+                          <option [value]="category.id">{{ category.name }}</option>
+                        }
+                      </select>
+                    </td>
+                    <td class="px-4 py-2">
+                      <select
+                        [(ngModel)]="row.accountId"
+                        class="border rounded px-1.5 py-1"
+                        [class.border-red-400]="!row.accountId"
+                        [class.border-gray-300]="!!row.accountId"
+                      >
+                        <option value="">Selecione</option>
+                        @for (account of accounts(); track account.id) {
+                          <option [value]="account.id">{{ account.name }}</option>
+                        }
+                      </select>
+                    </td>
+                    <td class="px-4 py-2 text-right">
+                      <div class="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          (click)="toggleType(row)"
+                          class="w-4 text-base font-bold leading-none"
+                          [class.text-red-600]="row.type === 'Expense'"
+                          [class.text-green-600]="row.type === 'Income'"
+                          [attr.aria-label]="row.type === 'Expense' ? 'Despesa — clique pra trocar pra receita' : 'Receita — clique pra trocar pra despesa'"
+                          [title]="row.type === 'Expense' ? 'Despesa — clique pra trocar pra receita' : 'Receita — clique pra trocar pra despesa'"
+                        >
+                          {{ row.type === 'Expense' ? '−' : '+' }}
+                        </button>
+                        <input
+                          type="text"
+                          inputmode="numeric"
+                          appCurrencyMask
+                          [(ngModel)]="row.amount"
+                          class="w-24 border border-gray-300 rounded px-2 py-1 text-right font-medium"
+                          [class.text-red-600]="row.type === 'Expense'"
+                          [class.text-green-600]="row.type === 'Income'"
+                        />
+                      </div>
+                    </td>
+                    <td class="px-4 py-2 text-right whitespace-nowrap">
+                      <button
+                        type="button"
+                        (click)="toggleEdit(row)"
+                        class="text-green-600 hover:text-green-700 transition mr-1"
+                        aria-label="Concluir edição"
+                        title="Concluir edição"
+                      >
+                        <lucide-icon name="check" [size]="14"></lucide-icon>
+                      </button>
+                      <button
+                        type="button"
+                        (click)="removeRow(row.localId)"
+                        class="text-gray-400 hover:text-red-600 transition"
+                        aria-label="Remover esta transação da lista"
+                        title="Remover"
+                      >
+                        <lucide-icon name="trash-2" [size]="14"></lucide-icon>
+                      </button>
+                    </td>
+                  }
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </ng-template>
+
+      @if (errorMessage()) {
+        <p class="text-sm text-red-600">{{ errorMessage() }}</p>
+      }
+
+      <div class="flex gap-2 pt-2">
+        @if (proposals()!.length > 0) {
+          <button
+            type="button"
+            (click)="confirmCreate()"
+            [disabled]="!canConfirm() || creating()"
+            class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            @if (creating()) {
+              Salvando...
+            } @else if (linkedCount() === 0) {
+              Confirmar e criar {{ newCount() }} {{ newCount() === 1 ? 'transação' : 'transações' }}
+            } @else {
+              Confirmar ({{ newCount() }} {{ newCount() === 1 ? 'nova' : 'novas' }} + {{ linkedCount() }}
+              {{ linkedCount() === 1 ? 'quitação' : 'quitações' }})
+            }
+          </button>
+        }
+        <button
+          type="button"
+          (click)="startOver()"
+          class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
+        >
+          Refazer
+        </button>
+        <a
+          routerLink="/transactions"
+          class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
+        >
+          Cancelar
+        </a>
+      </div>
+    </div>
+  }
+</div>

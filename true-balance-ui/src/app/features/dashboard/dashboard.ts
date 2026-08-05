@@ -1,5 +1,5 @@
 import { CurrencyPipe, DatePipe } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { switchMap } from 'rxjs';
@@ -293,6 +293,16 @@ export class Dashboard {
     () => this.selectedYear() === this.today.getFullYear() && this.selectedMonth() === this.today.getMonth() + 1,
   );
 
+  // Mês inteiramente no passado (não é nem o atual) — usado só pra decidir o sentido
+  // padrão da ordenação da Linha do Tempo (ver efeito no construtor): olhando pra trás,
+  // o dia mais recente (maior) é o que importa primeiro; olhando pro mês atual, o que
+  // importa é o que vem a partir de hoje em diante.
+  private readonly monthIsPast = computed(() => {
+    const todayKey = this.today.getFullYear() * 12 + (this.today.getMonth() + 1);
+    const selectedKey = this.selectedYear() * 12 + this.selectedMonth();
+    return selectedKey < todayKey;
+  });
+
   readonly balanceSectionTitle = computed(() =>
     this.isCurrentMonth() ? 'Saldo Atual' : 'Previsão de Saldo (fim do mês)',
   );
@@ -369,8 +379,38 @@ export class Dashboard {
 
   readonly daySortDirection = signal<'asc' | 'desc'>('asc');
 
+  // No mês atual, os dias já passados deste mesmo mês raramente importam (já aconteceram
+  // e não mudam mais) — ficam escondidos por padrão, só o "hoje" em diante aparece de
+  // cara. "Ver dias anteriores" revela de volta. Em qualquer outro mês (passado ou
+  // futuro) não existe "dia anterior irrelevante" — todos aparecem sempre.
+  readonly showPastDaysOfCurrentMonth = signal(false);
+
+  constructor() {
+    // Muda o sentido padrão da ordenação sozinho conforme o mês muda: olhando pra trás
+    // (mês passado), o dia mais recente vem primeiro; no mês atual, a ordem cronológica
+    // a partir de hoje faz mais sentido. Só reresseta quando o MÊS muda (não a cada
+    // render) — o usuário ainda pode alternar manualmente clicando no cabeçalho "Dia"
+    // sem que isso volte atrás sozinho enquanto ele continuar no mesmo mês.
+    effect(() => {
+      this.daySortDirection.set(this.monthIsPast() ? 'desc' : 'asc');
+      this.showPastDaysOfCurrentMonth.set(false);
+    });
+  }
+
   toggleDaySort(): void {
     this.daySortDirection.update((dir) => (dir === 'asc' ? 'desc' : 'asc'));
+  }
+
+  revealPastDaysOfCurrentMonth(): void {
+    this.showPastDaysOfCurrentMonth.set(true);
+  }
+
+  isToday(date: Date): boolean {
+    return (
+      date.getFullYear() === this.today.getFullYear() &&
+      date.getMonth() === this.today.getMonth() &&
+      date.getDate() === this.today.getDate()
+    );
   }
 
   readonly dayDetailModal = signal<{ label: string; date: Date; items: CashFlowDetailItem[]; total: number } | null>(
@@ -456,6 +496,31 @@ export class Dashboard {
     }
 
     return sorted;
+  });
+
+  // Quantos dias já passados do mês ATUAL estão escondidos — só existe algo pra esconder
+  // quando o mês selecionado é mesmo o de hoje (nos outros meses, nada é escondido).
+  readonly hiddenPastDaysCount = computed(() => {
+    if (!this.isCurrentMonth() || this.showPastDaysOfCurrentMonth()) {
+      return 0;
+    }
+
+    return this.today.getDate() - 1;
+  });
+
+  // O que a tabela de fato renderiza: no mês atual, com dias anteriores ainda
+  // escondidos, corta tudo antes de hoje (hoje em diante continua visível, incluindo o
+  // próprio dia de hoje) — em qualquer outro caso (mês passado/futuro, ou dias
+  // anteriores já revelados), mostra a lista inteira sem cortar nada.
+  readonly visibleDailyCashFlow = computed<DayCashFlow[] | undefined>(() => {
+    const days = this.dailyCashFlow();
+
+    if (days === undefined || this.hiddenPastDaysCount() === 0) {
+      return days;
+    }
+
+    const todayDate = this.today.getDate();
+    return days.filter((day) => day.date.getDate() >= todayDate);
   });
 
   // Categorias com a linha expandida (mostrando a quebra por subcategoria) no Resumo do

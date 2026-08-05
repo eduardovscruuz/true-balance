@@ -17,7 +17,7 @@ public class AiAssistantController : ControllerBase
     }
 
     [HttpPost("parse")]
-    public async Task<ActionResult<IEnumerable<CreateTransactionDto>>> Parse([FromBody] AiParseRequestDto request)
+    public async Task<ActionResult<IEnumerable<AiParsedTransactionDto>>> Parse([FromBody] AiParseRequestDto request)
     {
         if (string.IsNullOrWhiteSpace(request.Text))
         {
