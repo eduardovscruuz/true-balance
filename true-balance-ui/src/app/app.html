@@ -1,4 +1,5 @@
-<nav class="bg-gray-900 text-white">
+<div class="h-screen flex flex-col">
+  <nav class="bg-gray-900 text-white shrink-0">
   <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-6">
     <div class="relative">
       <button
@@ -13,37 +14,34 @@
       @if (newMenuOpen()) {
         <div class="fixed inset-0 z-40" (click)="closeNewMenu()"></div>
         <div class="absolute left-0 mt-2 w-44 bg-white rounded-lg shadow-lg py-1 z-50">
-          <a
-            routerLink="/transactions/new"
-            [queryParams]="{ type: 'Expense' }"
-            (click)="closeNewMenu()"
-            class="block px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 transition"
+          <button
+            type="button"
+            (click)="transactionModal.openExpense(); closeNewMenu()"
+            class="block w-full text-left px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 transition"
           >
             Despesa
-          </a>
-          <a
-            routerLink="/transactions/new"
-            [queryParams]="{ type: 'Income' }"
-            (click)="closeNewMenu()"
-            class="block px-4 py-2 text-sm font-semibold text-green-600 hover:bg-green-50 transition"
+          </button>
+          <button
+            type="button"
+            (click)="transactionModal.openIncome(); closeNewMenu()"
+            class="block w-full text-left px-4 py-2 text-sm font-semibold text-green-600 hover:bg-green-50 transition"
           >
             Receita
-          </a>
-          <a
-            routerLink="/transactions/new"
-            [queryParams]="{ source: 'credit-card' }"
-            (click)="closeNewMenu()"
-            class="block px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-100 transition"
+          </button>
+          <button
+            type="button"
+            (click)="transactionModal.openCreditCard(); closeNewMenu()"
+            class="block w-full text-left px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-100 transition"
           >
             Cartão
-          </a>
-          <a
-            routerLink="/transactions/ai"
-            (click)="closeNewMenu()"
-            class="block px-4 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50 transition"
+          </button>
+          <button
+            type="button"
+            (click)="aiModal.openModal(); closeNewMenu()"
+            class="block w-full text-left px-4 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50 transition"
           >
             IA
-          </a>
+          </button>
         </div>
       }
     </div>
@@ -93,8 +91,24 @@
       </div>
     </div>
   </div>
-</nav>
+  </nav>
 
-<main class="max-w-7xl mx-auto">
-  <router-outlet></router-outlet>
-</main>
+  <div id="app-scroll-container" class="flex-1 overflow-y-auto">
+    <main class="max-w-7xl mx-auto">
+      <router-outlet></router-outlet>
+    </main>
+  </div>
+</div>
+
+@if (transactionModal.openRequest(); as request) {
+  <app-transaction-form-modal
+    [transactionId]="request.transactionId ?? null"
+    [initialType]="request.type"
+    [initialSource]="request.source ?? null"
+    (closed)="transactionModal.close()"
+  />
+}
+
+@if (aiModal.isOpen()) {
+  <app-ai-transaction-entry-modal (closed)="aiModal.close()" />
+}

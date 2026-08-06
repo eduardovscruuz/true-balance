@@ -1,8 +1,7 @@
 import { CurrencyPipe, NgTemplateOutlet } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, output, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { LucideAngularModule } from 'lucide-angular';
 
@@ -45,15 +44,7 @@ interface ProposalRow {
 
 @Component({
   selector: 'app-ai-transaction-entry',
-  imports: [
-    FormsModule,
-    RouterLink,
-    CurrencyMaskDirective,
-    LucideAngularModule,
-    InitialsPipe,
-    NgTemplateOutlet,
-    CurrencyPipe,
-  ],
+  imports: [FormsModule, CurrencyMaskDirective, LucideAngularModule, InitialsPipe, NgTemplateOutlet, CurrencyPipe],
   templateUrl: './ai-transaction-entry.html',
 })
 export class AiTransactionEntry {
@@ -66,11 +57,17 @@ export class AiTransactionEntry {
   readonly compactBadgeBaseClass =
     'inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase border whitespace-nowrap';
 
+  // "Sem casca" — igual TransactionForm, serve tanto de página (AiTransactionEntryPage)
+  // quanto de modal (AiTransactionEntryModal). created: uma leva foi salva com sucesso.
+  // cancelled: usuário clicou em "Cancelar" (os dois pontos do fluxo — antes e depois de
+  // analisar — chamam o mesmo cancel()).
+  readonly created = output<void>();
+  readonly cancelled = output<void>();
+
   private readonly aiService = inject(AiService);
   private readonly transactionService = inject(TransactionService);
   private readonly categoryService = inject(CategoryService);
   private readonly accountService = inject(AccountService);
-  private readonly router = inject(Router);
 
   readonly categories = toSignal(this.categoryService.getAll(), { initialValue: [] });
   readonly accounts = toSignal(this.accountService.getAll(), { initialValue: [] });
@@ -88,6 +85,11 @@ export class AiTransactionEntry {
   readonly creating = signal(false);
   readonly errorMessage = signal<string | null>(null);
   readonly proposals = signal<ProposalRow[] | null>(null);
+
+  // Usado pelo Modal (ver AiTransactionEntryModal) pra decidir se fechar pelo X pede
+  // confirmação — texto digitado ou já ter analisado (mesmo sem ter confirmado ainda)
+  // conta como "tem algo que se perde ao fechar".
+  readonly isDirty = computed(() => this.promptText().trim().length > 0 || this.proposals() !== null);
 
   categoriesForType(type: TransactionType) {
     return this.categories().filter((category) => category.type === type);
@@ -254,6 +256,10 @@ export class AiTransactionEntry {
     this.errorMessage.set(null);
   }
 
+  cancel(): void {
+    this.cancelled.emit();
+  }
+
   // Métodos normais (não computed()) de propósito: os campos de cada linha (categoryId,
   // linkToMatch etc.) são mutados diretamente pelo ngModel/pelos botões de aceitar-vínculo
   // — mutação em objeto dentro do array, não um novo array via proposals.set(). Um
@@ -345,7 +351,10 @@ export class AiTransactionEntry {
     });
 
     forkJoin(requests).subscribe({
-      next: () => this.router.navigate(['/transactions']),
+      next: () => {
+        this.creating.set(false);
+        this.created.emit();
+      },
       error: () => {
         this.creating.set(false);
         this.errorMessage.set('Falha ao salvar uma ou mais transações. Tente novamente.');

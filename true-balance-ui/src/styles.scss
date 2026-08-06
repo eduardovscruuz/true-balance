@@ -1,3 +1,39 @@
 /* Estilos globais customizados (SCSS). O Tailwind entra separado, via src/tailwind.css,
    pra não passar pelo compilador Sass — o Tailwind v4 usa @layer e outras regras CSS
    nativas que o parser do Sass não entende. */
+
+// <html>/<body> nunca rolam (ver app.html: layout é um flex column de altura 100vh,
+// nav fixo no topo + #app-scroll-container ocupando o resto). Quem rola de verdade é só
+// esse container, que fica inteiramente ABAIXO do nav — então a barra de scroll nunca
+// cruza a faixa escura do header, só aparece sobre a área branca de conteúdo. Isso evita
+// de vez o problema de cor destoante que as tentativas anteriores (padding-right no body,
+// scrollbar-gutter no html, full-bleed no nav) tentavam remendar sem sucesso: não tem
+// mais UM scroll que precisa combinar com DUAS cores diferentes ao mesmo tempo.
+#app-scroll-container {
+  // Reserva o espaço da barra sempre, mesmo com overflow:hidden (Modal usa isso enquanto
+  // aberto) — sem isso o conteúdo "desliza" pra ocupar o espaço da barra quando ela some,
+  // e volta a se deslocar quando ela reaparece.
+  scrollbar-gutter: stable;
+  // A trilha (o "fundo" por onde a barra desliza) some — o navegador desenha isso por
+  // cima de tudo, então nenhum truque de layout (largura, margem) consegue cobrir; só
+  // estilizando a barra em si resolve. Transparente deixa o branco da página aparecer,
+  // sem faixa de cor destoante.
+  scrollbar-color: rgba(0, 0, 0, 0.25) transparent; // Firefox: thumb, depois track
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.25);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.4);
+}

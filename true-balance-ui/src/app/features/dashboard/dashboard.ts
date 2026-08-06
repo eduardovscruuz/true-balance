@@ -1,16 +1,17 @@
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { RouterLink } from '@angular/router';
 import { switchMap } from 'rxjs';
 import { LucideAngularModule } from 'lucide-angular';
 
 import { InitialsPipe } from '../../shared/pipes/initials.pipe';
 import { AccountService } from '../../core/services/account.service';
+import { AiModalService } from '../../core/services/ai-modal.service';
 import { CategoryService } from '../../core/services/category.service';
 import { CreditCardService } from '../../core/services/credit-card.service';
 import { MonthSelectionService } from '../../core/services/month-selection.service';
 import { SubcategoryService } from '../../core/services/subcategory.service';
+import { TransactionModalService } from '../../core/services/transaction-modal.service';
 import { TransactionService } from '../../core/services/transaction.service';
 import { resolveLucideIconName } from '../../shared/utils/lucide-icon.util';
 import {
@@ -77,7 +78,7 @@ interface CashFlowEntry {
 
 @Component({
   selector: 'app-dashboard',
-  imports: [CurrencyPipe, DatePipe, InitialsPipe, LucideAngularModule, RouterLink],
+  imports: [CurrencyPipe, DatePipe, InitialsPipe, LucideAngularModule],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.scss',
 })
@@ -90,8 +91,18 @@ export class Dashboard {
   // Mês selecionado é global (seletor único na barra de navegação, ver app.html) —
   // esta tela só lê os signals, nunca tem o próprio estado de mês.
   private readonly monthSelection = inject(MonthSelectionService);
+  protected readonly transactionModal = inject(TransactionModalService);
+  protected readonly aiModal = inject(AiModalService);
 
-  private readonly rawAccounts = toSignal(this.accountService.getAll(), { initialValue: [] });
+  // Contas e transações rebuscam sempre que TransactionService.refresh mudar — sem isso,
+  // salvar "Nova Despesa" pelo modal (que não navega, então o Dashboard nunca seria
+  // recriado) deixaria a tela com dado velho até um F5. Mesmo padrão de refreshTrigger já
+  // usado em transaction-list.ts, só que a fonte do "mudou" é global (TransactionService),
+  // não local — porque quem salva é um componente diferente (o modal), não esta tela.
+  private readonly rawAccounts = toSignal(
+    toObservable(this.transactionService.refresh).pipe(switchMap(() => this.accountService.getAll())),
+    { initialValue: [] },
+  );
 
   // A conta Corrente sempre aparece primeiro nos cards, independente do saldo — o
   // backend não garante nenhuma ordem específica, então ordenamos aqui. As demais
@@ -104,7 +115,10 @@ export class Dashboard {
 
   // Histórico completo (não só o mês selecionado) — precisamos dele pra calcular o
   // saldo ACUMULADO até um dia qualquer, não só o fluxo daquele mês isoladamente.
-  private readonly allTransactions = toSignal(this.transactionService.getAll(), { initialValue: [] });
+  private readonly allTransactions = toSignal(
+    toObservable(this.transactionService.refresh).pipe(switchMap(() => this.transactionService.getAll())),
+    { initialValue: [] },
+  );
   private readonly creditCards = toSignal(this.creditCardService.getAll(), { initialValue: [] });
 
   // null = nenhuma escolha manual ainda; usa o padrão (conta Corrente, ou a primeira que existir).

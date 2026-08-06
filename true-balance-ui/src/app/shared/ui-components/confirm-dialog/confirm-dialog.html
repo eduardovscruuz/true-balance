@@ -1,0 +1,44 @@
+<div
+  class="fixed inset-0 bg-black/50 flex items-center justify-center z-60 p-4 transition-opacity duration-150"
+  [class.opacity-0]="!visible() || closing()"
+  [class.opacity-100]="visible() && !closing()"
+>
+  <div
+    class="bg-white rounded-lg shadow-lg w-full max-w-sm p-6 transition-all duration-150"
+    [class.opacity-0]="!visible() || closing()"
+    [class.scale-95]="!visible() || closing()"
+    [class.opacity-100]="visible() && !closing()"
+    [class.scale-100]="visible() && !closing()"
+    (click)="$event.stopPropagation()"
+  >
+    <h3 class="text-lg font-semibold text-gray-800 mb-2">{{ title() }}</h3>
+    <p class="text-sm text-gray-600 mb-6">{{ message() }}</p>
+    <div class="flex justify-end gap-2">
+      <button
+        type="button"
+        (click)="onCancel()"
+        class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
+      >
+        {{ cancelLabel() }}
+      </button>
+      @if (secondaryLabel(); as secondary) {
+        <button
+          type="button"
+          (click)="onSecondary()"
+          class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
+        >
+          {{ secondary }}
+        </button>
+      }
+      <button
+        type="button"
+        (click)="onConfirm()"
+        class="px-4 py-2 rounded-md text-white transition {{
+          danger() ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
+        }}"
+      >
+        {{ confirmLabel() }}
+      </button>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,10 @@
+<app-modal
+  #modalRef
+  title="Lançar com IA"
+  [isDirty]="contentRef()?.isDirty() ?? false"
+  [showFooter]="false"
+  size="xl"
+  (close)="onClose()"
+>
+  <app-ai-transaction-entry (created)="onCreated()" (cancelled)="modalRef.attemptClose()" />
+</app-modal>

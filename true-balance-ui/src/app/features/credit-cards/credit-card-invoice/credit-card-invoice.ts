@@ -9,6 +9,7 @@ import { CategoryService } from '../../../core/services/category.service';
 import { CreditCardService } from '../../../core/services/credit-card.service';
 import { MonthSelectionService } from '../../../core/services/month-selection.service';
 import { SubcategoryService } from '../../../core/services/subcategory.service';
+import { TransactionModalService } from '../../../core/services/transaction-modal.service';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { resolveLucideIconName } from '../../../shared/utils/lucide-icon.util';
 import { STATUS_BADGE_BASE_CLASS, STATUS_BADGE_CLASS } from '../../../shared/utils/payment-status.util';
@@ -26,6 +27,7 @@ export class CreditCardInvoice {
   private readonly subcategoryService = inject(SubcategoryService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  protected readonly transactionModal = inject(TransactionModalService);
   // Mês selecionado é global (seletor único na barra de navegação) — a fatura mostrada
   // é sempre a do mês/ano navegado ali, igual ao resto do app.
   private readonly monthSelection = inject(MonthSelectionService);
@@ -64,11 +66,21 @@ export class CreditCardInvoice {
 
   private readonly yearMonth$ = toObservable(this.yearMonth);
 
+  // refreshTrigger cobre as próprias ações desta tela (pagar, reverter, excluir); o
+  // transactionService.refresh global cobre mudanças feitas em outro lugar que não sabe
+  // desta tela existe — ex: editar ou excluir um item pelo modal (ver TransactionFormModal),
+  // que só notifica pelo canal global, igual o Dashboard já faz.
   private readonly monthTransactions = toSignal(
-    combineLatest([this.yearMonth$, toObservable(this.refreshTrigger)]).pipe(
+    combineLatest([this.yearMonth$, toObservable(this.refreshTrigger), toObservable(this.transactionService.refresh)]).pipe(
       switchMap(([{ year, month }]) => this.transactionService.getByMonth(year, month)),
     ),
   );
+
+  readonly sortDirection = signal<'asc' | 'desc'>('asc');
+
+  toggleSort(): void {
+    this.sortDirection.update((dir) => (dir === 'asc' ? 'desc' : 'asc'));
+  }
 
   readonly invoiceItems = computed(() => {
     const all = this.monthTransactions();
@@ -80,12 +92,13 @@ export class CreditCardInvoice {
 
     const categoryById = new Map(this.categories().map((category) => [category.id, category]));
     const subcategoryById = new Map(this.subcategories().map((subcategory) => [subcategory.id, subcategory]));
+    const direction = this.sortDirection() === 'asc' ? 1 : -1;
 
     return [...all]
       .filter((t) => t.creditCardId === cardId)
       // Ordena pela data REAL da compra, não pelo vencimento (que é igual pra todo mundo
       // dentro da mesma fatura, então não distingue a ordem de nada).
-      .sort((a, b) => (a.purchaseDate ?? a.date).localeCompare(b.purchaseDate ?? b.date))
+      .sort((a, b) => direction * (a.purchaseDate ?? a.date).localeCompare(b.purchaseDate ?? b.date))
       .map((transaction) => {
         const category = categoryById.get(transaction.categoryId);
         const subcategory = transaction.subcategoryId ? subcategoryById.get(transaction.subcategoryId) : undefined;

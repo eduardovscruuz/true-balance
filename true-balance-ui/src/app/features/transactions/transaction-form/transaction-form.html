@@ -1,6 +1,6 @@
-<div class="p-6 max-w-md">
-  <h1 class="text-2xl font-bold text-gray-800 mb-6">{{ formTitle() }}</h1>
-
+@if (loading()) {
+  <p class="text-gray-500 text-sm">Carregando...</p>
+} @else {
   <form [formGroup]="form" (ngSubmit)="onSubmit()" class="space-y-4">
     @if (!isTypeImplicit()) {
       <div>
@@ -14,7 +14,7 @@
             [class.border-gray-300]="form.controls.type.value !== 'Expense'"
           >
             <input type="radio" formControlName="type" value="Expense" class="sr-only" />
-            Despesa
+            {{ isCreditCardMode() ? 'Compra' : 'Despesa' }}
           </label>
           <label
             class="flex items-center justify-center gap-2 border rounded-md px-3 py-2 cursor-pointer transition"
@@ -24,7 +24,7 @@
             [class.border-gray-300]="form.controls.type.value !== 'Income'"
           >
             <input type="radio" formControlName="type" value="Income" class="sr-only" />
-            Receita
+            {{ isCreditCardMode() ? 'Estorno' : 'Receita' }}
           </label>
         </div>
       </div>
@@ -351,6 +351,15 @@
             formControlName="purchaseDate"
             class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+          @if (creditCardDueDatePreview(); as dueDate) {
+            <p class="text-xs text-gray-400 mt-1">
+              Vai pra fatura com vencimento em {{ dueDate | date: 'dd/MM/yyyy' : 'UTC' }}
+              @if (isInstallmentValue()) {
+                — vale pra esta e, se aplicado a "esta e as próximas pendentes", pras
+                próximas parcelas também (cada uma na fatura certa).
+              }
+            </p>
+          }
         } @else {
           <input
             id="date"
@@ -359,10 +368,23 @@
             class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           @if (creditCardDueDatePreview(); as dueDate) {
-            <p class="text-xs text-gray-400 mt-1">
-              Cai na fatura com vencimento em {{ dueDate | date: 'dd/MM/yyyy' : 'UTC' }} — é essa data que fica
-              registrada na transação.
-            </p>
+            <div class="mt-2">
+              <label class="block text-xs font-medium text-gray-500 mb-1" for="invoiceMonthOverride">Fatura</label>
+              <input
+                id="invoiceMonthOverride"
+                type="month"
+                formControlName="invoiceMonthOverride"
+                class="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p class="text-xs text-gray-400 mt-1">
+                Vencimento em {{ dueDate | date: 'dd/MM/yyyy' : 'UTC' }}
+                @if (form.controls.invoiceMonthOverride.dirty) {
+                  — você forçou essa fatura manualmente.
+                } @else {
+                  — calculada automaticamente a partir da data da compra.
+                }
+              </p>
+            </div>
           }
         }
       </div>
@@ -400,48 +422,18 @@
         }
       </div>
     </div>
-
-    @if (isCreditCardMode() && !isEditMode()) {
-      <div class="flex items-center justify-between pt-2">
-        <a routerLink="/transactions" class="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 transition">
-          Cancelar
-        </a>
-        <div class="flex gap-2">
-          <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">
-            Salvar
-          </button>
-          <button
-            type="button"
-            (click)="saveAndCreateAnother()"
-            class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition"
-          >
-            Salvar e criar outro
-          </button>
-        </div>
-      </div>
-    } @else {
-      <div class="flex items-center justify-between gap-2 pt-2">
-        <div class="flex gap-2">
-          <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">
-            Salvar
-          </button>
-          <a
-            routerLink="/transactions"
-            class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
-          >
-            Cancelar
-          </a>
-        </div>
-        @if (isEditMode()) {
-          <button
-            type="button"
-            (click)="deleteTransaction()"
-            class="px-4 py-2 rounded-md border border-red-300 text-red-600 hover:bg-red-50 transition"
-          >
-            Excluir
-          </button>
-        }
-      </div>
-    }
   </form>
-</div>
+}
+
+@if (pendingSeriesUpdate(); as pending) {
+  <app-confirm-dialog
+    title="Faz parte de uma recorrência"
+    message="&quot;{{ pending.dto.description }}&quot; faz parte de uma recorrência (fixa ou parcelada). Essa mudança vale só pra esta ocorrência, ou pra ela e todas as próximas PENDENTES da série?"
+    cancelLabel="Cancelar"
+    secondaryLabel="Só esta"
+    confirmLabel="Esta e as próximas pendentes"
+    (cancelled)="cancelSeriesUpdate()"
+    (secondarySelected)="confirmSeriesUpdateOnlyThis()"
+    (confirmed)="confirmSeriesUpdateWholeSeries()"
+  />
+}

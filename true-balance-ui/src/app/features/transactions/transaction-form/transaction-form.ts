@@ -1,11 +1,12 @@
 import { CurrencyPipe, DatePipe } from '@angular/common';
-import { Component, OnInit, computed, effect, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, effect, inject, input, output, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { Observable, combineLatest, map } from 'rxjs';
 
+import { ConfirmDialog } from '../../../shared/ui-components/confirm-dialog/confirm-dialog';
 import { CurrencyMaskDirective } from '../../../shared/directives/currency-mask.directive';
-import { TransactionStatus, TransactionType } from '../../../core/models/transaction.model';
+import { CreateTransaction, Transaction, TransactionStatus, TransactionType } from '../../../core/models/transaction.model';
 import { AccountService } from '../../../core/services/account.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { CreditCardService } from '../../../core/services/credit-card.service';
@@ -29,7 +30,7 @@ interface DescriptionSuggestion {
 
 @Component({
   selector: 'app-transaction-form',
-  imports: [ReactiveFormsModule, RouterLink, CurrencyMaskDirective, CurrencyPipe, DatePipe, LucideAngularModule],
+  imports: [ReactiveFormsModule, CurrencyMaskDirective, CurrencyPipe, DatePipe, LucideAngularModule, ConfirmDialog],
   templateUrl: './transaction-form.html',
   styleUrl: './transaction-form.scss',
 })
@@ -39,9 +40,22 @@ export class TransactionForm implements OnInit {
   private readonly accountService = inject(AccountService);
   private readonly creditCardService = inject(CreditCardService);
   private readonly subcategoryService = inject(SubcategoryService);
-  private readonly router = inject(Router);
-  private readonly route = inject(ActivatedRoute);
   private readonly formBuilder = inject(FormBuilder);
+
+  // Substituem o que antes vinha de ActivatedRoute (query params type/source/creditCardId,
+  // param :id) — assim este componente funciona tanto numa página roteada (o host lê a URL
+  // e repassa pra cá) quanto dentro de um modal (o host passa direto, sem URL nenhuma
+  // envolvida). Ver TransactionFormPage e TransactionFormModal.
+  readonly transactionId = input<string | null>(null);
+  readonly initialType = input<TransactionType | null>(null);
+  readonly initialSource = input<'credit-card' | null>(null);
+  readonly initialCreditCardId = input<string | null>(null);
+
+  // Emitido depois de criar/atualizar OU excluir com sucesso — quem hospeda este formulário
+  // decide o que fazer (a página navega pra /transactions; o modal se fecha). Reaproveitado
+  // pra exclusão também: pro host, "salvou" e "excluiu" significam a mesma coisa — "terminei,
+  // pode ir embora" — não precisa de um segundo output só pra isso.
+  readonly saved = output<void>();
 
   private readonly categories = toSignal(this.categoryService.getAll(), { initialValue: [] });
   readonly accounts = toSignal(this.accountService.getAll(), { initialValue: [] });
@@ -51,7 +65,6 @@ export class TransactionForm implements OnInit {
   // descriptionSuggestions) — nada aqui filtra por mês, precisa de tudo.
   private readonly allTransactions = toSignal(this.transactionService.getAll(), { initialValue: [] });
 
-  private readonly transactionId = signal<string | null>(null);
   readonly isEditMode = () => this.transactionId() !== null;
 
   // Preserva o RecurrenceGroupId original ao editar uma transação que já era fixa —
@@ -64,45 +77,45 @@ export class TransactionForm implements OnInit {
   // silenciosamente a data de pagamento da fatura inteira).
   private loadedPaidDateIso: string | null = null;
 
-  // Vindo dos botões "Nova Despesa"/"Nova Receita" da lista (?type=Expense|Income).
-  // Quando presente, o tipo já chega implícito e não precisa ser escolhido no formulário.
-  private readonly initialType = this.resolveInitialTypeFromQueryParam();
-
   // Em edição, o tipo já foi decidido na criação e não faz mais sentido escolher de
   // novo — o título do formulário (ver formTitle) já indica "Editar Despesa"/"Editar
   // Receita" no lugar do toggle.
-  readonly isTypeImplicit = computed(() => this.isEditMode() || this.initialType !== null);
+  readonly isTypeImplicit = computed(() => this.isEditMode() || this.initialType() !== null);
 
-  // Vindo do botão "Nova Despesa de Cartão" (?source=credit-card), ou detectado ao
-  // carregar uma transação existente que já tem CreditCardId em vez de AccountId.
-  // Conta e Cartão são mutuamente exclusivos no modelo (Transaction tem os dois
-  // campos nulláveis), então o formulário mostra um seletor OU o outro, nunca os dois.
-  readonly isCreditCardMode = signal(this.route.snapshot.queryParamMap.get('source') === 'credit-card');
+  // Vindo do botão "Cartão" (initialSource==='credit-card'), ou detectado ao carregar uma
+  // transação existente que já tem CreditCardId em vez de AccountId (ver ngOnInit). Conta
+  // e Cartão são mutuamente exclusivos no modelo (Transaction tem os dois campos
+  // nulláveis), então o formulário mostra um seletor OU o outro, nunca os dois.
+  //
+  // Começa em false e é sincronizado por um effect() no construtor (não lido direto aqui
+  // com "signal(this.initialSource() === 'credit-card')") de propósito: hospedado dentro
+  // do modal, este componente é o NETO da árvore (app.html > TransactionFormModal >
+  // TransactionForm) — nesse instante exato do inicializador de campo, o input ainda podia
+  // não estar assentado, e um signal() comum nunca se corrige depois (fica travado no
+  // valor errado pra sempre). Um effect() só roda depois que os inputs já estão
+  // garantidamente resolvidos, então sempre pega o valor certo.
+  readonly isCreditCardMode = signal(false);
 
   readonly formTitle = computed(() => {
+    // Em modo cartão o título sempre segue o Tipo SELECIONADO (ver toggle
+    // Despesa/Estorno no template), não o initialType estático — o botão único "Cartão"
+    // (dashboard/header) não vem com tipo pré-definido, o usuário escolhe aqui dentro.
+    if (this.isCreditCardMode()) {
+      if (this.isEditMode()) {
+        return this.selectedType() === 'Income' ? 'Editar Estorno de Cartão' : 'Editar Compra de Cartão';
+      }
+      return this.selectedType() === 'Income' ? 'Novo Estorno de Cartão' : 'Nova Compra de Cartão';
+    }
+
     if (this.isEditMode()) {
       return this.selectedType() === 'Income' ? 'Editar Receita' : 'Editar Despesa';
     }
 
-    if (this.initialType === 'Expense' && this.isCreditCardMode()) {
-      return 'Nova Despesa de Cartão';
-    }
-
-    if (this.initialType === 'Income' && this.isCreditCardMode()) {
-      return 'Registrar Estorno';
-    }
-
-    // Botão único "Cartão" (dashboard/header) não vem mais com type pré-definido — o
-    // Tipo (Despesa ou Estorno) é escolhido aqui dentro, no toggle (ver isTypeImplicit).
-    if (this.isCreditCardMode()) {
-      return 'Novo Lançamento de Cartão';
-    }
-
-    if (this.initialType === 'Expense') {
+    if (this.initialType() === 'Expense') {
       return 'Nova Despesa';
     }
 
-    if (this.initialType === 'Income') {
+    if (this.initialType() === 'Income') {
       return 'Nova Receita';
     }
 
@@ -110,15 +123,13 @@ export class TransactionForm implements OnInit {
   });
 
   form = this.formBuilder.group({
-    type: this.formBuilder.nonNullable.control<TransactionType>(this.initialType ?? 'Expense', Validators.required),
+    type: this.formBuilder.nonNullable.control<TransactionType>(this.initialType() ?? 'Expense', Validators.required),
     categoryId: this.formBuilder.nonNullable.control('', Validators.required),
     subcategoryId: this.formBuilder.nonNullable.control(''),
     accountId: this.formBuilder.nonNullable.control('', Validators.required),
     // Vindo do botão "Registrar Estorno" na tela de fatura (?creditCardId=...), que já
     // sabe em qual cartão o estorno deve entrar — poupa o usuário de selecionar de novo.
-    creditCardId: this.formBuilder.nonNullable.control(
-      this.route.snapshot.queryParamMap.get('creditCardId') ?? '',
-    ),
+    creditCardId: this.formBuilder.nonNullable.control(this.initialCreditCardId() ?? ''),
     amount: this.formBuilder.control<number | null>(null, Validators.required),
     description: this.formBuilder.nonNullable.control('', Validators.required),
     date: this.formBuilder.nonNullable.control(this.todayAsInputValue(), Validators.required),
@@ -126,6 +137,12 @@ export class TransactionForm implements OnInit {
     // do vencimento da fatura (guardado em "date", nunca reprocessado aqui). Na criação,
     // o campo "Data da Compra" da tela usa "date" mesmo (ver onSubmit).
     purchaseDate: this.formBuilder.control<string | null>(null),
+    // Só relevante na CRIAÇÃO de compra de cartão — mês ("yyyy-MM") da fatura em que a
+    // compra deve cair. Começa sempre auto-preenchido com o mês calculado a partir da
+    // data de compra + dia de fechamento do cartão (ver effect no construtor), mas o
+    // usuário pode digitar outro mês pra forçar a compra numa fatura específica (ex:
+    // já sabe que vai lançar atrasado e quer que caia na fatura seguinte mesmo assim).
+    invoiceMonthOverride: this.formBuilder.control<string | null>(null),
     // Pendente por padrão. Pra compra de cartão, Status nem fica editável aqui — só
     // muda em bloco pela tela de Fatura (marcar fatura inteira como Paga/Pendente),
     // nunca por compra individual (ver efeito abaixo).
@@ -149,6 +166,31 @@ export class TransactionForm implements OnInit {
     // da parcela (ex: fatura anterior já mostrou 33,27) e não quer fazer a conta de cabeça.
     amountInputMode: this.formBuilder.nonNullable.control<'total' | 'perInstallment'>('total'),
   });
+
+  // Combina as 4 chamadas de referência num só sinal de "já carregou" — se estiver
+  // editando, some com o carregamento da própria transação (marcado em ngOnInit). Quem
+  // hospeda este formulário (página ou modal) usa isso pra mostrar um estado de
+  // carregamento até o form estar de fato pronto pra uso.
+  private readonly dataReady = toSignal(
+    combineLatest([
+      this.categoryService.getAll(),
+      this.accountService.getAll(),
+      this.creditCardService.getAll(),
+      this.subcategoryService.getAll(),
+    ]).pipe(map(() => true)),
+    { initialValue: false },
+  );
+  private readonly transactionLoaded = signal(false);
+  readonly loading = computed(() => !this.dataReady() || (this.isEditMode() && !this.transactionLoaded()));
+
+  // Reactive Forms nunca marca um controle como "dirty" por causa de patchValue()/
+  // setValue() programático (usados pra popular o form, inclusive nos effects abaixo) —
+  // só interação real do usuário pelo input/select ligado ao formControlName faz isso. Ou
+  // seja, o form já nasce "limpo" e só fica dirty quando o usuário de fato mexe em algo;
+  // não precisa de snapshot pra comparar, só expor o que o Angular já sabe como signal.
+  readonly isDirty = toSignal(this.form.valueChanges.pipe(map(() => this.form.dirty)), { initialValue: false });
+
+  readonly saving = signal(false);
 
   private readonly selectedType = toSignal(this.form.controls.type.valueChanges, {
     initialValue: this.form.controls.type.value,
@@ -232,6 +274,10 @@ export class TransactionForm implements OnInit {
     initialValue: this.form.controls.date.value,
   });
 
+  private readonly purchaseDateValue = toSignal(this.form.controls.purchaseDate.valueChanges, {
+    initialValue: this.form.controls.purchaseDate.value,
+  });
+
   // Comparação lexicográfica de "yyyy-MM" funciona pra ordem cronológica (zero-padded) —
   // não faz sentido a recorrência acabar antes mesmo de começar.
   readonly recurrenceEndDateInvalid = computed(() => {
@@ -253,15 +299,45 @@ export class TransactionForm implements OnInit {
     initialValue: this.form.controls.status.value,
   });
 
+  private readonly invoiceMonthOverrideValue = toSignal(this.form.controls.invoiceMonthOverride.valueChanges, {
+    initialValue: this.form.controls.invoiceMonthOverride.value,
+  });
+
+  // O cálculo "natural" (sem considerar override nenhum) — usado só pra manter o campo
+  // Fatura auto-preenchido enquanto o usuário não mexeu nele (ver effect no construtor).
+  // creditCardInvoiceInfo (abaixo) é que decide o valor final de verdade usado ao salvar.
+  private readonly autoComputedDueDate = computed(() => {
+    if (!this.isCreditCardMode() || this.isEditMode()) {
+      return null;
+    }
+
+    const creditCard = this.creditCards().find((c) => c.id === this.selectedCreditCardId());
+
+    if (!creditCard) {
+      return null;
+    }
+
+    const [year, month, day] = this.dateValue().split('-').map(Number);
+    const installmentMonthOffset =
+      this.isInstallmentValue() && this.installmentNumberValue() ? this.installmentNumberValue()! - 1 : 0;
+
+    return this.computeCreditCardInvoice(year, month, day, creditCard.closingDay, creditCard.dueDay, installmentMonthOffset)
+      .dueDate;
+  });
+
   // Uma compra no cartão pertence à fatura que fecha DEPOIS dela — se o dia da compra é
   // depois do fechamento do cartão, ela já perdeu a fatura deste mês e cai na do mês
-  // SEGUINTE (que ainda nem fechou). Na CRIAÇÃO, calculamos isso a partir da data de
-  // compra digitada; o vencimento resultante (não a data de compra) é o que vira a Data
-  // salva da transação (ver onSubmit) — assim ela aparece agrupada no mês certo em
+  // SEGUINTE (que ainda nem fechou). Calculamos isso a partir da data de compra digitada
+  // (ou, na criação, se o usuário forçou um mês no campo Fatura, usamos esse mês direto,
+  // ignorando o cálculo); o vencimento resultante (não a data de compra) é o que vira a
+  // Data salva da transação (ver onSubmit) — assim ela aparece agrupada no mês certo em
   // "Transações do Mês", e não no mês em que a compra foi fisicamente feita.
-  // Na EDIÇÃO, a Data já É o vencimento (foi calculado assim na criação) — reprocessar
-  // como se fosse uma compra nova empurraria erroneamente pra um ciclo ainda mais à
-  // frente, então só reconstruímos o fechamento correspondente a partir dele.
+  //
+  // Isso vale tanto pra CRIAÇÃO quanto pra EDIÇÃO de compra avulsa ou parcelada — mudar a
+  // Data da Compra pode, sim, mover a compra pra outra fatura (ex: lançou atrasado, a
+  // compra é na verdade do mês anterior). Só despesa FIXA foge disso: cada mês é um fato
+  // novo (uma conta nova chegando), não existe "a" data de compra fazendo sentido de
+  // reprocessar — ali só reconstruímos o fechamento a partir da Data já salva.
   private readonly creditCardInvoiceInfo = computed(() => {
     if (!this.isCreditCardMode()) {
       return null;
@@ -273,13 +349,46 @@ export class TransactionForm implements OnInit {
       return null;
     }
 
-    const [year, month, day] = this.dateValue().split('-').map(Number);
-
-    if (this.isEditMode()) {
+    if (this.isEditMode() && this.isFixedValue()) {
+      const [year, month, day] = this.dateValue().split('-').map(Number);
       const closingDate = this.creditCardClosingDateFromDueDate(year, month, creditCard.closingDay, creditCard.dueDay);
       return { closingDate, dueDate: new Date(Date.UTC(year, month - 1, day)) };
     }
 
+    if (this.isEditMode()) {
+      const [year, month, day] = (this.purchaseDateValue() ?? this.dateValue()).split('-').map(Number);
+      // Igual a "registrar diretamente a parcela N" na criação (ver comentário abaixo) —
+      // a Data da Compra editada representa sempre a mesma compra original única, então o
+      // deslocamento é relativo à parcela 1, não à parcela que está sendo editada agora.
+      const installmentMonthOffset =
+        this.isInstallmentValue() && this.installmentNumberValue() ? this.installmentNumberValue()! - 1 : 0;
+
+      return this.computeCreditCardInvoice(
+        year,
+        month,
+        day,
+        creditCard.closingDay,
+        creditCard.dueDay,
+        installmentMonthOffset,
+      );
+    }
+
+    const override = this.invoiceMonthOverrideValue();
+
+    if (override) {
+      const [overrideYear, overrideMonth] = override.split('-').map(Number);
+      const clampedDueDay = Math.min(creditCard.dueDay, new Date(overrideYear, overrideMonth, 0).getDate());
+      const dueDate = new Date(Date.UTC(overrideYear, overrideMonth - 1, clampedDueDay));
+      const closingDate = this.creditCardClosingDateFromDueDate(
+        overrideYear,
+        overrideMonth,
+        creditCard.closingDay,
+        creditCard.dueDay,
+      );
+      return { closingDate, dueDate };
+    }
+
+    const [year, month, day] = this.dateValue().split('-').map(Number);
     // Registrar diretamente a parcela N de uma compra parcelada (ex: já vinha pagando em
     // outro controle e só passou a registrar a partir da 4ª parcela) precisa deslocar a
     // fatura pra frente pelas parcelas que já "venceram" antes desta — sem isso, o sistema
@@ -312,10 +421,12 @@ export class TransactionForm implements OnInit {
     return todayUtcMidnight < info.closingDate;
   });
 
-  // Só relevante (e só usado, ver onSubmit) na CRIAÇÃO — em edição a Data já é o
-  // vencimento, não há nada novo pra prever.
+  // Null só em despesa FIXA editada — ali a Data já é o vencimento, não há nada novo pra
+  // prever (ver creditCardInvoiceInfo). Nos demais casos (criação, ou edição de compra
+  // avulsa/parcelada), é o vencimento recém-calculado que vai virar a Data salva (ver
+  // onSubmit) — mostrado aqui como preview antes de salvar.
   readonly creditCardDueDatePreview = computed(() =>
-    this.isEditMode() ? null : (this.creditCardInvoiceInfo()?.dueDate ?? null),
+    this.isEditMode() && this.isFixedValue() ? null : (this.creditCardInvoiceInfo()?.dueDate ?? null),
   );
 
   // Só mostra categorias compatíveis com o tipo escolhido (Receita/Despesa) —
@@ -433,6 +544,32 @@ export class TransactionForm implements OnInit {
   }
 
   constructor() {
+    // Sincroniza isCreditCardMode a partir do input assim que ele estiver garantidamente
+    // resolvido (ver comentário na declaração do signal acima). Só roda de novo se
+    // initialSource() mudar — o que nunca acontece depois da criação —, então nunca
+    // sobrescreve o `.set()` de edição (ngOnInit), que roda bem depois.
+    effect(() => {
+      this.isCreditCardMode.set(this.initialSource() === 'credit-card');
+    });
+
+    // Mantém o campo Fatura acompanhando o cálculo automático enquanto o usuário não
+    // mexeu nele diretamente (control.pristine — setValue() nunca marca dirty, só
+    // interação real do usuário via input marca). No instante em que ele edita o mês na
+    // mão, o controle vira dirty e este effect para de sobrescrever — a partir daí é o
+    // usuário quem manda, não o cálculo automático.
+    effect(() => {
+      const autoDate = this.autoComputedDueDate();
+      const control = this.form.controls.invoiceMonthOverride;
+
+      if (autoDate && control.pristine) {
+        const month = `${autoDate.getUTCFullYear()}-${String(autoDate.getUTCMonth() + 1).padStart(2, '0')}`;
+
+        if (control.value !== month) {
+          control.setValue(month);
+        }
+      }
+    });
+
     // Reseta a categoria só quando ela deixa de pertencer ao tipo atual — não a cada
     // mudança de tipo incondicionalmente. Isso importa no modo de edição: o
     // patchValue() do ngOnInit dispara valueChanges no campo "type", e se resetássemos
@@ -580,13 +717,11 @@ export class TransactionForm implements OnInit {
   }
 
   ngOnInit(): void {
-    const id = this.route.snapshot.paramMap.get('id');
+    const id = this.transactionId();
 
     if (id === null) {
       return;
     }
-
-    this.transactionId.set(id);
 
     this.transactionService.getById(id).subscribe((transaction) => {
       this.originalRecurrenceGroupId = transaction.recurrenceGroupId;
@@ -624,6 +759,7 @@ export class TransactionForm implements OnInit {
       // Detecta o modo a partir do dado real da transação carregada — não do
       // query param (que só faz sentido na criação, vindo dos botões da lista).
       this.isCreditCardMode.set(transaction.creditCardId !== null);
+      this.transactionLoaded.set(true);
     });
   }
 
@@ -730,12 +866,18 @@ export class TransactionForm implements OnInit {
     const id = this.transactionId();
 
     if (id === null) {
-      this.transactionService.create(dto).subscribe(() => {
-        if (afterSave === 'createAnother') {
-          this.resetFormForNextEntry();
-        } else {
-          this.router.navigate(['/transactions']);
-        }
+      this.saving.set(true);
+      this.transactionService.create(dto).subscribe({
+        next: () => {
+          this.saving.set(false);
+
+          if (afterSave === 'createAnother') {
+            this.resetFormForNextEntry();
+          } else {
+            this.saved.emit();
+          }
+        },
+        error: () => this.saving.set(false),
       });
       return;
     }
@@ -747,25 +889,63 @@ export class TransactionForm implements OnInit {
     const isPartOfSeries = this.originalRecurrenceGroupId !== null && (isFixed || isInstallment);
 
     if (!isPartOfSeries) {
-      this.transactionService.update(id, dto).subscribe(() => this.router.navigate(['/transactions']));
+      this.saving.set(true);
+      this.transactionService.update(id, dto).subscribe({
+        next: () => {
+          this.saving.set(false);
+          this.saved.emit();
+        },
+        error: () => this.saving.set(false),
+      });
       return;
     }
 
-    const updateWholeSeries = confirm(
-      `"${description}" faz parte de uma recorrência (fixa ou parcelada).\n\n` +
-        `Clique OK para aplicar esta mudança nesta ocorrência e em todas as próximas PENDENTES da série.\n` +
-        `Clique Cancelar para alterar só esta ocorrência.`,
-    );
-
-    const request$ = updateWholeSeries
-      ? this.transactionService.updateSeries(id, dto)
-      : this.transactionService.update(id, dto);
-
-    request$.subscribe(() => this.router.navigate(['/transactions']));
+    // Pergunta ao usuário (ver ConfirmDialog no template) em vez de decidir aqui — a
+    // resposta chega depois, por um dos 3 métodos abaixo (confirmSeriesUpdate.../
+    // cancelSeriesUpdate), então este método termina aqui sem salvar nada ainda.
+    this.pendingSeriesUpdate.set({ id, dto });
   }
 
-  // Botão "Excluir" só existe em edição — vem da tabela de transações, que agora só
-  // navega pra cá (a linha inteira leva pra edição; excluir mora dentro do formulário).
+  // Três caminhos possíveis pra edição de uma ocorrência que já faz parte de uma série
+  // (ver ConfirmDialog no template, disparado quando pendingSeriesUpdate() tem valor):
+  // cancelar de vez (não salva nada — antes não existia essa opção de fato: o "Cancelar"
+  // do confirm() nativo do navegador, sem querer, tinha o mesmo efeito de "só esta"),
+  // salvar só esta ocorrência, ou salvar esta e as próximas PENDENTES da série.
+  readonly pendingSeriesUpdate = signal<{ id: string; dto: CreateTransaction } | null>(null);
+
+  cancelSeriesUpdate(): void {
+    this.pendingSeriesUpdate.set(null);
+  }
+
+  confirmSeriesUpdateOnlyThis(): void {
+    this.resolveSeriesUpdate((id, dto) => this.transactionService.update(id, dto));
+  }
+
+  confirmSeriesUpdateWholeSeries(): void {
+    this.resolveSeriesUpdate((id, dto) => this.transactionService.updateSeries(id, dto));
+  }
+
+  private resolveSeriesUpdate(request: (id: string, dto: CreateTransaction) => Observable<Transaction>): void {
+    const pending = this.pendingSeriesUpdate();
+
+    if (!pending) {
+      return;
+    }
+
+    this.pendingSeriesUpdate.set(null);
+    this.saving.set(true);
+    request(pending.id, pending.dto).subscribe({
+      next: () => {
+        this.saving.set(false);
+        this.saved.emit();
+      },
+      error: () => this.saving.set(false),
+    });
+  }
+
+  // Botão "Excluir" só existe em edição — a página de edição desenha o botão, e o modal
+  // de edição também (ver TransactionFormModal). Termina emitindo "saved" igual um
+  // salvamento normal — ver comentário no output.
   deleteTransaction(): void {
     const id = this.transactionId();
 
@@ -782,7 +962,7 @@ export class TransactionForm implements OnInit {
         return;
       }
 
-      this.transactionService.delete(id).subscribe(() => this.router.navigate(['/transactions']));
+      this.transactionService.delete(id).subscribe(() => this.saved.emit());
       return;
     }
 
@@ -795,7 +975,7 @@ export class TransactionForm implements OnInit {
     );
 
     if (deleteWholeSeries) {
-      this.transactionService.deleteSeries(id).subscribe(() => this.router.navigate(['/transactions']));
+      this.transactionService.deleteSeries(id).subscribe(() => this.saved.emit());
       return;
     }
 
@@ -803,7 +983,7 @@ export class TransactionForm implements OnInit {
       return;
     }
 
-    this.transactionService.delete(id).subscribe(() => this.router.navigate(['/transactions']));
+    this.transactionService.delete(id).subscribe(() => this.saved.emit());
   }
 
   // Preserva Cartão/Conta/Tipo (o contexto do lote que está sendo lançado) e limpa o
@@ -942,10 +1122,5 @@ export class TransactionForm implements OnInit {
     }
 
     return new Date(Date.UTC(closingYear, closingMonth - 1, closingDay));
-  }
-
-  private resolveInitialTypeFromQueryParam(): TransactionType | null {
-    const raw = this.route.snapshot.queryParamMap.get('type');
-    return raw === 'Expense' || raw === 'Income' ? raw : null;
   }
 }

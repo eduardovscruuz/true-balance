@@ -114,6 +114,23 @@ public class TransactionService : ITransactionService
                     && t.Id != id)
                 .ToListAsync();
 
+            // Parcelado (TotalInstallments setado): todas as parcelas são pedaços da MESMA
+            // compra física — compartilham a mesma PurchaseDate (diferente de uma despesa
+            // FIXA, onde cada mês é um fato novo, uma conta nova chegando, sem "a" data de
+            // compra única fazendo sentido de propagar). Editar a Data da Compra desta
+            // ocorrência propaga o mesmo valor pras próximas pendentes, e o Vencimento
+            // (Date) de cada uma é recalculado a partir dali, deslocado pelo número da
+            // parcela — igual seria calculado na criação (ver computeCreditCardInvoice no
+            // front-end) — porque mudar a Data da Compra pode empurrar a compra inteira pra
+            // outra fatura (ex: lançou atrasado, a compra na verdade é do mês anterior).
+            // O deslocamento é sempre relativo à parcela 1 (InstallmentNumber - 1), não à
+            // parcela que foi editada — dá no mesmo quando se edita a 1ª, mas continua
+            // certo editando qualquer outra: a PurchaseDate digitada representa sempre a
+            // mesma compra original única, não "a data desta parcela em si".
+            var creditCard = dto.CreditCardId is Guid creditCardId && dto.TotalInstallments.HasValue && dto.PurchaseDate.HasValue
+                ? await _context.CreditCards.FindAsync(creditCardId)
+                : null;
+
             foreach (var sibling in pendingSiblings)
             {
                 sibling.AccountId = dto.AccountId;
@@ -126,6 +143,15 @@ public class TransactionService : ITransactionService
                 sibling.RecurrenceDay = dto.RecurrenceDay;
                 sibling.RecurrenceEndDate = NormalizeToUtc(dto.RecurrenceEndDate);
                 sibling.TotalInstallments = dto.TotalInstallments;
+
+                if (creditCard is not null && sibling.InstallmentNumber.HasValue)
+                {
+                    var purchaseDate = NormalizeToUtc(dto.PurchaseDate!.Value);
+                    var monthOffset = sibling.InstallmentNumber.Value - 1;
+
+                    sibling.PurchaseDate = purchaseDate;
+                    sibling.Date = ComputeCreditCardDueDate(purchaseDate, creditCard.ClosingDay, creditCard.DueDay, monthOffset);
+                }
             }
         }
 
@@ -259,6 +285,37 @@ public class TransactionService : ITransactionService
         // caso, guarda o VENCIMENTO da fatura (calculado a partir da compra + fechamento
         // do cartão), não o dia da compra em si.
         transaction.PurchaseDate = dto.CreditCardId is null ? null : NormalizeToUtc(dto.PurchaseDate);
+    }
+
+    // Mesma lógica de "computeCreditCardInvoice" do formulário no front-end (ver
+    // transaction-form.ts) — uma compra pertence à fatura que fecha DEPOIS dela; o
+    // vencimento fica no mesmo mês do fechamento se o dia de vencimento do cartão vier
+    // depois do dia de fechamento, senão no mês seguinte ao fechamento. monthOffset desloca
+    // o resultado N meses pra frente, usado pra recalcular o vencimento de uma parcela
+    // específica (não a 1ª) a partir da mesma data de compra da parcela âncora.
+    private static DateTime ComputeCreditCardDueDate(DateTime purchaseDate, int closingDay, int dueDay, int monthOffset)
+    {
+        var closingMonthIndex = (purchaseDate.Year * 12) + (purchaseDate.Month - 1);
+
+        if (purchaseDate.Day > closingDay)
+        {
+            closingMonthIndex += 1;
+        }
+
+        closingMonthIndex += monthOffset;
+
+        var dueMonthIndex = closingMonthIndex;
+
+        if (dueDay <= closingDay)
+        {
+            dueMonthIndex += 1;
+        }
+
+        var dueYear = dueMonthIndex / 12;
+        var dueMonth = (dueMonthIndex % 12) + 1;
+        var clampedDueDay = Math.Min(dueDay, DateTime.DaysInMonth(dueYear, dueMonth));
+
+        return new DateTime(dueYear, dueMonth, clampedDueDay, 0, 0, 0, DateTimeKind.Utc);
     }
 
     // Npgsql exige DateTime.Kind = Utc para colunas "timestamp with time zone" — se o cliente

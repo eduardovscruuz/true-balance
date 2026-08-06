@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
@@ -9,6 +9,19 @@ import { CreateTransaction, Transaction, TransactionStatus } from '../models/tra
 export class TransactionService {
   private readonly http = inject(HttpClient);
   private readonly apiUrl = `${environment.apiUrl}/transactions`;
+
+  // Sinal simples de "os dados de transação mudaram em algum lugar" — pra telas que ficam
+  // montadas sem navegar (ex: Dashboard atrás de um modal) e não teriam outro jeito de
+  // saber que precisam rebuscar. Quem muda algo por fora do próprio fluxo de refresh de
+  // cada tela (ver TransactionFormModal) chama notifyChanged(); quem quer reagir usa
+  // toObservable(refresh).pipe(switchMap(() => getAll())) — mesmo padrão que
+  // transaction-list.ts já usa com seu refreshTrigger local.
+  private readonly _refresh = signal(0);
+  readonly refresh = this._refresh.asReadonly();
+
+  notifyChanged(): void {
+    this._refresh.update((n) => n + 1);
+  }
 
   getAll(): Observable<Transaction[]> {
     return this.http.get<Transaction[]>(this.apiUrl);

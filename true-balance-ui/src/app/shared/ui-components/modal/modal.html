@@ -1,0 +1,61 @@
+<div
+  class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 transition-opacity duration-150"
+  [class.opacity-0]="!visible() || closing()"
+  [class.opacity-100]="visible() && !closing()"
+  (click)="attemptClose()"
+>
+  <div
+    class="bg-white rounded-lg shadow-lg w-full max-h-[90vh] flex flex-col transition-all duration-150"
+    [class.max-w-md]="size() === 'md'"
+    [class.max-w-4xl]="size() === 'xl'"
+    [class.opacity-0]="!visible() || closing()"
+    [class.scale-95]="!visible() || closing()"
+    [class.opacity-100]="visible() && !closing()"
+    [class.scale-100]="visible() && !closing()"
+    (click)="$event.stopPropagation()"
+  >
+    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
+      <h2 class="text-lg font-semibold text-gray-800">{{ title() }}</h2>
+      <button
+        type="button"
+        (click)="attemptClose()"
+        class="text-gray-400 hover:text-gray-600 transition"
+        aria-label="Fechar"
+      >
+        <lucide-icon name="x" [size]="20"></lucide-icon>
+      </button>
+    </div>
+
+    <div class="px-6 py-4 overflow-y-auto flex-1">
+      <ng-content></ng-content>
+    </div>
+
+    @if (showFooter()) {
+      <div class="px-6 py-4 border-t border-gray-200 flex items-center justify-between shrink-0">
+        <div>
+          <ng-content select="[modalFooterStart]"></ng-content>
+        </div>
+        <button
+          type="button"
+          (click)="onSaveClick()"
+          [disabled]="!isDirty() || saving()"
+          class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {{ saving() ? 'Salvando...' : 'Salvar' }}
+        </button>
+      </div>
+    }
+  </div>
+</div>
+
+@if (showDiscardConfirm()) {
+  <app-confirm-dialog
+    title="Alterações não salvas"
+    message="Você tem alterações não salvas. Descartar e fechar mesmo assim?"
+    confirmLabel="Descartar"
+    cancelLabel="Continuar editando"
+    [danger]="true"
+    (confirmed)="onDiscardConfirmed()"
+    (cancelled)="onDiscardCancelled()"
+  />
+}

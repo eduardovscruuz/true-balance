@@ -1,7 +1,7 @@
 import { Routes } from '@angular/router';
 
 import { AccountForm } from './features/accounts/account-form/account-form';
-import { AiTransactionEntry } from './features/ai-transaction-entry/ai-transaction-entry';
+import { AiTransactionEntryPage } from './features/ai-transaction-entry/ai-transaction-entry-page';
 import { AccountList } from './features/accounts/account-list/account-list';
 import { CategoryForm } from './features/categories/category-form/category-form';
 import { CategoryList } from './features/categories/category-list/category-list';
@@ -11,7 +11,7 @@ import { CreditCardForm } from './features/credit-cards/credit-card-form/credit-
 import { CreditCardInvoice } from './features/credit-cards/credit-card-invoice/credit-card-invoice';
 import { CreditCardList } from './features/credit-cards/credit-card-list/credit-card-list';
 import { Dashboard } from './features/dashboard/dashboard';
-import { TransactionForm } from './features/transactions/transaction-form/transaction-form';
+import { TransactionFormPage } from './features/transactions/transaction-form/transaction-form-page';
 import { TransactionList } from './features/transactions/transaction-list/transaction-list';
 
 export const routes: Routes = [
@@ -30,7 +30,7 @@ export const routes: Routes = [
   { path: 'credit-cards/:id/edit', component: CreditCardForm },
   { path: 'credit-cards/:id/invoice', component: CreditCardInvoice },
   { path: 'transactions', component: TransactionList },
-  { path: 'transactions/ai', component: AiTransactionEntry },
-  { path: 'transactions/new', component: TransactionForm },
-  { path: 'transactions/:id/edit', component: TransactionForm },
+  { path: 'transactions/ai', component: AiTransactionEntryPage },
+  { path: 'transactions/new', component: TransactionFormPage },
+  { path: 'transactions/:id/edit', component: TransactionFormPage },
 ];

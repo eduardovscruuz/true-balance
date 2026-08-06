@@ -102,7 +102,10 @@
         <table class="w-full border-collapse bg-white shadow-sm rounded-lg overflow-hidden">
           <thead class="bg-gray-100 text-left text-sm text-gray-600">
             <tr>
-              <th class="px-4 py-2">Data da Compra</th>
+              <th class="px-4 py-2 cursor-pointer select-none" (click)="toggleSort()">
+                Data
+                <span class="text-gray-400">{{ sortDirection() === 'asc' ? '▲' : '▼' }}</span>
+              </th>
               <th class="px-4 py-2">Descrição</th>
               <th class="px-4 py-2">Categoria</th>
               <th class="px-4 py-2">Valor</th>
@@ -140,14 +143,15 @@
                   {{ item.type === 'Income' ? '-' : '' }}{{ item.amount | currency: 'BRL' }}
                 </td>
                 <td class="px-4 py-2 text-right whitespace-nowrap">
-                  <a
-                    [routerLink]="['/transactions', item.id, 'edit']"
+                  <button
+                    type="button"
+                    (click)="transactionModal.edit(item.id)"
                     class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-gray-100 transition text-gray-500"
                     aria-label="Editar transação"
                     title="Editar"
                   >
                     <lucide-icon name="pencil" [size]="16"></lucide-icon>
-                  </a>
+                  </button>
                   <button
                     type="button"
                     (click)="deleteItem(item.id, item.description, item.recurrenceGroupId)"

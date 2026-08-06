@@ -1,0 +1,25 @@
+<app-modal
+  [title]="formRef()?.formTitle() ?? ''"
+  [isDirty]="formRef()?.isDirty() ?? false"
+  [saving]="formRef()?.saving() ?? false"
+  (close)="onClose()"
+  (save)="onSave()"
+>
+  @if (formRef()?.isEditMode()) {
+    <button
+      modalFooterStart
+      type="button"
+      (click)="onDelete()"
+      class="px-4 py-2 rounded-md border border-red-300 text-red-600 hover:bg-red-50 transition"
+    >
+      Excluir
+    </button>
+  }
+
+  <app-transaction-form
+    [transactionId]="transactionId()"
+    [initialType]="initialType()"
+    [initialSource]="initialSource()"
+    (saved)="onSaved()"
+  />
+</app-modal>

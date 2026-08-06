@@ -60,33 +60,34 @@
   </section>
 
   <div class="flex gap-4 mb-8">
-    <a
-      routerLink="/transactions/new"
-      [queryParams]="{ type: 'Expense' }"
+    <button
+      type="button"
+      (click)="transactionModal.openExpense()"
       class="flex-1 text-center bg-red-600 text-white px-8 py-6 rounded-xl hover:bg-red-700 transition uppercase text-lg font-bold shadow-sm"
     >
       Nova Despesa
-    </a>
-    <a
-      routerLink="/transactions/new"
-      [queryParams]="{ type: 'Income' }"
+    </button>
+    <button
+      type="button"
+      (click)="transactionModal.openIncome()"
       class="flex-1 text-center bg-green-600 text-white px-8 py-6 rounded-xl hover:bg-green-700 transition uppercase text-lg font-bold shadow-sm"
     >
       Nova Receita
-    </a>
-    <a
-      routerLink="/transactions/new"
-      [queryParams]="{ source: 'credit-card' }"
+    </button>
+    <button
+      type="button"
+      (click)="transactionModal.openCreditCard()"
       class="flex-1 text-center bg-gray-800 text-white px-8 py-6 rounded-xl hover:bg-gray-900 transition uppercase text-lg font-bold shadow-sm"
     >
       Cartão
-    </a>
-    <a
-      routerLink="/transactions/ai"
+    </button>
+    <button
+      type="button"
+      (click)="aiModal.openModal()"
       class="flex-1 text-center bg-blue-600 text-white px-8 py-6 rounded-xl hover:bg-blue-700 transition uppercase text-lg font-bold shadow-sm"
     >
       IA
-    </a>
+    </button>
   </div>
 
   <section class="mb-8">
