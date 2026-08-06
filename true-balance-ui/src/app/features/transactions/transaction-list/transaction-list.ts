@@ -11,6 +11,7 @@ import { CategoryService } from '../../../core/services/category.service';
 import { CreditCardService } from '../../../core/services/credit-card.service';
 import { MonthSelectionService } from '../../../core/services/month-selection.service';
 import { SubcategoryService } from '../../../core/services/subcategory.service';
+import { TransactionModalService } from '../../../core/services/transaction-modal.service';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { CreateTransaction, Transaction } from '../../../core/models/transaction.model';
 import { CurrencyMaskDirective } from '../../../shared/directives/currency-mask.directive';
@@ -39,6 +40,7 @@ export class TransactionList {
   // Mês selecionado é global (seletor único na barra de navegação, ver app.html) —
   // esta tela só lê os signals, nunca tem o próprio estado de mês.
   private readonly monthSelection = inject(MonthSelectionService);
+  protected readonly transactionModal = inject(TransactionModalService);
 
   private readonly refreshTrigger = signal(0);
 

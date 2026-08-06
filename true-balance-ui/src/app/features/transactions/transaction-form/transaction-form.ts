@@ -959,6 +959,14 @@ export class TransactionForm implements OnInit {
   // Botão "Excluir" só existe em edição — a página de edição desenha o botão, e o modal
   // de edição também (ver TransactionFormModal). Termina emitindo "saved" igual um
   // salvamento normal — ver comentário no output.
+  //
+  // Confirmação via ConfirmDialog (ver template) em vez de confirm() nativo — o fluxo de
+  // série usava DOIS confirm() encadeados (OK/Cancelar significando coisas diferentes em
+  // cada um), fácil de clicar errado e acabar não excluindo nada sem perceber. Um diálogo
+  // só, com 3 botões nomeados, tira essa ambiguidade.
+  readonly pendingSimpleDelete = signal<{ id: string; description: string } | null>(null);
+  readonly pendingSeriesDelete = signal<{ id: string; description: string } | null>(null);
+
   deleteTransaction(): void {
     const id = this.transactionId();
 
@@ -969,34 +977,57 @@ export class TransactionForm implements OnInit {
     const description = this.form.controls.description.value;
     const recurrenceGroupId = this.originalRecurrenceGroupId;
 
-    // Transação avulsa (sem série): confirmação simples de sempre.
     if (recurrenceGroupId === null) {
-      if (!confirm(`Excluir a transação "${description}"? Essa ação não pode ser desfeita.`)) {
-        return;
-      }
-
-      this.transactionService.delete(id).subscribe(() => this.saved.emit());
+      this.pendingSimpleDelete.set({ id, description });
       return;
     }
 
-    // Faz parte de uma série (fixa ou parcelada): oferece excluir só esta ocorrência ou
-    // esta e todas as próximas pendentes da série (as já pagas nunca são afetadas).
-    const deleteWholeSeries = confirm(
-      `"${description}" faz parte de uma recorrência (fixa ou parcelada).\n\n` +
-        `Clique OK para excluir esta e todas as próximas ocorrências PENDENTES da série.\n` +
-        `Clique Cancelar para excluir só esta ocorrência.`,
-    );
+    this.pendingSeriesDelete.set({ id, description });
+  }
 
-    if (deleteWholeSeries) {
-      this.transactionService.deleteSeries(id).subscribe(() => this.saved.emit());
+  cancelSimpleDelete(): void {
+    this.pendingSimpleDelete.set(null);
+  }
+
+  confirmSimpleDelete(): void {
+    const pending = this.pendingSimpleDelete();
+
+    if (!pending) {
       return;
     }
 
-    if (!confirm(`Excluir apenas esta ocorrência de "${description}"? Essa ação não pode ser desfeita.`)) {
+    this.pendingSimpleDelete.set(null);
+    this.transactionService.delete(pending.id).subscribe(() => this.saved.emit());
+  }
+
+  cancelSeriesDelete(): void {
+    this.pendingSeriesDelete.set(null);
+  }
+
+  // "Só esta" — exclui apenas a ocorrência clicada, mantendo o resto da série intacto
+  // (nunca toca em RecurrenceGroupId nenhum, só o Id específico).
+  confirmDeleteOnlyThis(): void {
+    const pending = this.pendingSeriesDelete();
+
+    if (!pending) {
       return;
     }
 
-    this.transactionService.delete(id).subscribe(() => this.saved.emit());
+    this.pendingSeriesDelete.set(null);
+    this.transactionService.delete(pending.id).subscribe(() => this.saved.emit());
+  }
+
+  // "Esta e as próximas pendentes" — backend filtra estritamente por RecurrenceGroupId
+  // (nunca por descrição), então nunca afeta outra série que por acaso tenha o mesmo nome.
+  confirmDeleteWholeSeries(): void {
+    const pending = this.pendingSeriesDelete();
+
+    if (!pending) {
+      return;
+    }
+
+    this.pendingSeriesDelete.set(null);
+    this.transactionService.deleteSeries(pending.id).subscribe(() => this.saved.emit());
   }
 
   // Preserva Cartão/Conta/Tipo (o contexto do lote que está sendo lançado) e limpa o

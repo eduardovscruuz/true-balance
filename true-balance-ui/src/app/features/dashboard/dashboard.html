@@ -59,6 +59,49 @@
     }
   </section>
 
+  <section class="mb-8">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div class="bg-white shadow-sm rounded-lg p-4">
+        <div class="flex items-start justify-between gap-2 mb-2">
+          <p class="text-sm text-gray-600">{{ debtCardTitle() }}</p>
+          <button
+            type="button"
+            (click)="openDebtDetail()"
+            class="text-gray-400 hover:text-gray-600 shrink-0"
+            aria-label="Configurar dívidas"
+            title="Configurar"
+          >
+            <lucide-icon name="pencil" [size]="16"></lucide-icon>
+          </button>
+        </div>
+        <p
+          class="text-2xl font-bold"
+          [class.text-red-600]="totalDebtToday() < 0"
+          [class.text-gray-800]="totalDebtToday() >= 0"
+        >
+          {{ totalDebtToday() | currency: 'BRL' }}
+        </p>
+        <p class="text-xs text-gray-400 mt-1">Não conta despesa fixa (assinaturas, mensalidades) — essa é ao lado.</p>
+      </div>
+      <div class="bg-white shadow-sm rounded-lg p-4">
+        <p class="text-sm text-gray-600 mb-2">Despesa fixa em {{ selectedMonthLabelCapitalized() }}</p>
+        <p class="text-2xl font-bold text-gray-800 flex items-center gap-1.5">
+          {{ monthlyFixedExpenseTotal() | currency: 'BRL' }}
+          <button
+            type="button"
+            (click)="openFixedExpenseDetail()"
+            class="text-gray-400 hover:text-gray-600"
+            aria-label="Ver detalhamento"
+            title="Ver detalhamento"
+          >
+            <lucide-icon name="info" [size]="16"></lucide-icon>
+          </button>
+        </p>
+        <p class="text-xs text-gray-400 mt-1">Assinaturas e mensalidades deste mês — muda ao navegar o mês.</p>
+      </div>
+    </div>
+  </section>
+
   <div class="flex gap-4 mb-8">
     <button
       type="button"
@@ -357,14 +400,19 @@
     }
   </section>
 
-  @if (dayDetailModal(); as modal) {
-    <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50" (click)="closeDayDetail()">
+  @if (detailModal(); as modal) {
+    <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50" (click)="closeDetailModal()">
       <div class="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full mx-4" (click)="$event.stopPropagation()">
         <div class="flex items-center justify-between mb-4">
-          <h3 class="text-lg font-semibold text-gray-800">{{ modal.label }} — {{ modal.date | date: 'dd/MM/yyyy' }}</h3>
+          <h3 class="text-lg font-semibold text-gray-800">
+            {{ modal.label }}
+            @if (modal.date) {
+              — {{ modal.date | date: 'dd/MM/yyyy' }}
+            }
+          </h3>
           <button
             type="button"
-            (click)="closeDayDetail()"
+            (click)="closeDetailModal()"
             class="text-gray-400 hover:text-gray-600"
             aria-label="Fechar"
           >
@@ -377,7 +425,12 @@
           <ul class="divide-y divide-gray-100 mb-3">
             @for (item of modal.items; track $index) {
               <li class="flex justify-between gap-4 py-1.5 text-sm">
-                <span class="text-gray-600">{{ item.description }}</span>
+                <span class="text-gray-600">
+                  {{ item.description }}
+                  @if (item.date) {
+                    <span class="text-xs text-gray-400">— {{ item.date | date: 'dd/MM/yyyy' : 'UTC' }}</span>
+                  }
+                </span>
                 <span class="font-medium text-gray-800 whitespace-nowrap">{{ item.amount | currency: 'BRL' }}</span>
               </li>
             }
@@ -386,6 +439,104 @@
         <div class="flex justify-between pt-2 border-t border-gray-200 font-semibold text-gray-800">
           <span>Total</span>
           <span>{{ modal.total | currency: 'BRL' }}</span>
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (debtDetailModal(); as debt) {
+    <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50" (click)="closeDebtDetail()">
+      <div
+        class="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full mx-4 max-h-[85vh] overflow-y-auto flex flex-col"
+        (click)="$event.stopPropagation()"
+      >
+        <div class="flex items-center justify-between mb-1 shrink-0">
+          <h3 class="text-lg font-semibold text-gray-800">{{ debtCardTitle() }}</h3>
+          <button
+            type="button"
+            (click)="closeDebtDetail()"
+            class="text-gray-400 hover:text-gray-600"
+            aria-label="Fechar"
+          >
+            <lucide-icon name="x" [size]="18"></lucide-icon>
+          </button>
+        </div>
+        <p class="text-xs text-gray-400 mb-3 shrink-0">
+          Desmarque o que não quer contar agora — ex: um empréstimo sem pressa pra quitar.
+        </p>
+
+        @if (debt.sections.length === 0) {
+          <p class="text-sm text-gray-500">Nenhuma dívida pendente.</p>
+        } @else {
+          <ul class="divide-y divide-gray-100 mb-3 overflow-y-auto">
+            @for (section of debt.sections; track section.key) {
+              <li class="py-1.5">
+                <button
+                  type="button"
+                  (click)="toggleDebtSection(section.key)"
+                  class="flex items-center justify-between w-full gap-2 text-sm"
+                >
+                  <span class="flex items-center gap-1.5 text-gray-700 font-medium">
+                    <lucide-icon
+                      [name]="isDebtSectionExpanded(section.key) ? 'chevron-down' : 'chevron-right'"
+                      [size]="14"
+                      class="text-gray-400 shrink-0"
+                    ></lucide-icon>
+                    {{ section.label }}
+                  </span>
+                  <span class="font-medium text-gray-800 whitespace-nowrap">
+                    {{ debtSectionTotal(section) | currency: 'BRL' }}
+                  </span>
+                </button>
+
+                @if (isDebtSectionExpanded(section.key)) {
+                  <ul class="mt-1.5 pl-5 space-y-1.5">
+                    @for (leaf of section.leaves; track leaf.key) {
+                      <li class="flex items-center justify-between gap-2 text-xs">
+                        <label class="flex items-center gap-1.5 text-gray-600 min-w-0 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            [checked]="isDebtLeafChecked(leaf.key)"
+                            (change)="toggleDebtLeaf(leaf.key)"
+                            class="rounded border-gray-300 shrink-0"
+                          />
+                          <span class="truncate">
+                            {{ leaf.description }}
+                            @if (leaf.count > 1) {
+                              <span class="text-gray-400">({{ leaf.count }} parcelas)</span>
+                            }
+                          </span>
+                        </label>
+                        <span class="text-gray-700 whitespace-nowrap shrink-0">{{ leaf.total | currency: 'BRL' }}</span>
+                      </li>
+                    }
+                  </ul>
+                }
+              </li>
+            }
+          </ul>
+        }
+
+        <div class="flex justify-between pt-2 border-t border-gray-200 font-semibold text-gray-800 shrink-0">
+          <span>Total</span>
+          <span>{{ debtDetailGrandTotal() | currency: 'BRL' }}</span>
+        </div>
+
+        <div class="flex gap-2 pt-3 shrink-0">
+          <button
+            type="button"
+            (click)="saveDebtExclusions()"
+            class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition text-sm font-medium"
+          >
+            Salvar
+          </button>
+          <button
+            type="button"
+            (click)="closeDebtDetail()"
+            class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition text-sm"
+          >
+            Cancelar
+          </button>
         </div>
       </div>
     </div>

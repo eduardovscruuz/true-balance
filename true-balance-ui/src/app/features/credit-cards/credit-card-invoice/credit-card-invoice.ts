@@ -5,6 +5,7 @@ import { combineLatest, map, switchMap } from 'rxjs';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
 
+import { ConfirmDialog } from '../../../shared/ui-components/confirm-dialog/confirm-dialog';
 import { CategoryService } from '../../../core/services/category.service';
 import { CreditCardService } from '../../../core/services/credit-card.service';
 import { MonthSelectionService } from '../../../core/services/month-selection.service';
@@ -16,7 +17,7 @@ import { STATUS_BADGE_BASE_CLASS, STATUS_BADGE_CLASS } from '../../../shared/uti
 
 @Component({
   selector: 'app-credit-card-invoice',
-  imports: [RouterLink, CurrencyPipe, DatePipe, LucideAngularModule, NgTemplateOutlet],
+  imports: [RouterLink, CurrencyPipe, DatePipe, LucideAngularModule, NgTemplateOutlet, ConfirmDialog],
   templateUrl: './credit-card-invoice.html',
   styleUrl: './credit-card-invoice.scss',
 })
@@ -294,34 +295,61 @@ export class CreditCardInvoice {
     return `${year}-${month}-${day}`;
   }
 
-  // Mesma lógica de transaction-list.ts: item avulso pede confirmação simples; item que
+  // Mesma lógica de transaction-form.ts: item avulso pede confirmação simples; item que
   // faz parte de uma série (fixa ou parcelada, ex: "Fatura parcelada" 1/5) oferece excluir
-  // só esta ocorrência ou esta e todas as próximas PENDENTES da série.
+  // só esta ocorrência ou esta e todas as próximas PENDENTES da série. Via ConfirmDialog
+  // (ver template) em vez de confirm() nativo — dois confirm() encadeados era fácil de
+  // clicar errado e acabar não excluindo nada sem perceber.
+  readonly pendingSimpleDelete = signal<{ id: string; description: string } | null>(null);
+  readonly pendingSeriesDelete = signal<{ id: string; description: string } | null>(null);
+
   deleteItem(id: string, description: string, recurrenceGroupId: string | null): void {
     if (recurrenceGroupId === null) {
-      if (!confirm(`Excluir "${description}"? Essa ação não pode ser desfeita.`)) {
-        return;
-      }
-
-      this.transactionService.delete(id).subscribe(() => this.refreshTrigger.update((n) => n + 1));
+      this.pendingSimpleDelete.set({ id, description });
       return;
     }
 
-    const deleteWholeSeries = confirm(
-      `"${description}" faz parte de uma recorrência (fixa ou parcelada).\n\n` +
-        `Clique OK para excluir esta e todas as próximas ocorrências PENDENTES da série.\n` +
-        `Clique Cancelar para excluir só esta ocorrência.`,
-    );
+    this.pendingSeriesDelete.set({ id, description });
+  }
 
-    if (deleteWholeSeries) {
-      this.transactionService.deleteSeries(id).subscribe(() => this.refreshTrigger.update((n) => n + 1));
+  cancelSimpleDelete(): void {
+    this.pendingSimpleDelete.set(null);
+  }
+
+  confirmSimpleDelete(): void {
+    const pending = this.pendingSimpleDelete();
+
+    if (!pending) {
       return;
     }
 
-    if (!confirm(`Excluir apenas esta ocorrência de "${description}"? Essa ação não pode ser desfeita.`)) {
+    this.pendingSimpleDelete.set(null);
+    this.transactionService.delete(pending.id).subscribe(() => this.refreshTrigger.update((n) => n + 1));
+  }
+
+  cancelSeriesDelete(): void {
+    this.pendingSeriesDelete.set(null);
+  }
+
+  confirmDeleteOnlyThis(): void {
+    const pending = this.pendingSeriesDelete();
+
+    if (!pending) {
       return;
     }
 
-    this.transactionService.delete(id).subscribe(() => this.refreshTrigger.update((n) => n + 1));
+    this.pendingSeriesDelete.set(null);
+    this.transactionService.delete(pending.id).subscribe(() => this.refreshTrigger.update((n) => n + 1));
+  }
+
+  confirmDeleteWholeSeries(): void {
+    const pending = this.pendingSeriesDelete();
+
+    if (!pending) {
+      return;
+    }
+
+    this.pendingSeriesDelete.set(null);
+    this.transactionService.deleteSeries(pending.id).subscribe(() => this.refreshTrigger.update((n) => n + 1));
   }
 }

@@ -439,3 +439,29 @@
     (confirmed)="confirmSeriesUpdateWholeSeries()"
   />
 }
+
+@if (pendingSimpleDelete(); as pending) {
+  <app-confirm-dialog
+    title="Excluir transação"
+    message="Excluir &quot;{{ pending.description }}&quot;? Essa ação não pode ser desfeita."
+    cancelLabel="Cancelar"
+    confirmLabel="Excluir"
+    [danger]="true"
+    (cancelled)="cancelSimpleDelete()"
+    (confirmed)="confirmSimpleDelete()"
+  />
+}
+
+@if (pendingSeriesDelete(); as pending) {
+  <app-confirm-dialog
+    title="Faz parte de uma recorrência"
+    message="&quot;{{ pending.description }}&quot; faz parte de uma recorrência (fixa ou parcelada). Você quer excluir só esta ocorrência, ou ela e todas as próximas PENDENTES da série?"
+    cancelLabel="Cancelar"
+    secondaryLabel="Só esta"
+    confirmLabel="Esta e as próximas pendentes"
+    [danger]="true"
+    (cancelled)="cancelSeriesDelete()"
+    (secondarySelected)="confirmDeleteOnlyThis()"
+    (confirmed)="confirmDeleteWholeSeries()"
+  />
+}

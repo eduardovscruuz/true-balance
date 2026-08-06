@@ -87,7 +87,7 @@
               </tr>
             } @else {
               <tr
-                [routerLink]="['/transactions', row.id, 'edit']"
+                (click)="transactionModal.edit(row.id)"
                 class="border-t border-gray-200 cursor-pointer hover:bg-gray-50 transition"
               >
                 <td class="px-4 py-2 text-gray-600">{{ row.date | date: 'dd/MM' : 'UTC' }}</td>

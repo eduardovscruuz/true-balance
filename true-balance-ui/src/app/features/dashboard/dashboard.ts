@@ -25,6 +25,30 @@ import {
 export interface CashFlowDetailItem {
   description: string;
   amount: number;
+  // Opcional — só os detalhamentos que cruzam vários meses (despesa fixa) mostram isso;
+  // o da Linha do Tempo já é de um dia só, não precisa repetir.
+  date?: string;
+}
+
+// Uma linha do modal de dívidas — ou o total agregado de UM cartão (dentro da seção
+// "Cartões", sem detalhe de série: esse detalhe já existe na aba Cartões), ou uma SÉRIE
+// de parcelas restantes dentro de uma categoria (count > 1 quando é uma compra parcelada
+// com mais de uma ocorrência ainda pendente). "key" é o que o checkbox usa pra
+// incluir/excluir do total — ver excludedDebtKeys.
+export interface DebtLeaf {
+  key: string;
+  description: string;
+  count: number;
+  total: number;
+}
+
+export interface DebtSection {
+  key: string;
+  label: string;
+  // Soma de TODOS os leaves, fixa — só usada pra ordenar as seções. O valor exibido de
+  // verdade (que reage aos checkboxes marcados/desmarcados) vem de sectionTotal().
+  total: number;
+  leaves: DebtLeaf[];
 }
 
 export interface DayCashFlow {
@@ -391,6 +415,86 @@ export class Dashboard {
     });
   });
 
+  // "agosto/2026" -> "Agosto/2026" — mesmo padrão de capitalização já usado em
+  // credit-card-invoice.ts, aparece como título de card, não no meio de uma frase.
+  readonly selectedMonthLabelCapitalized = computed(() => {
+    const label = this.monthSelection.selectedMonthLabel();
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  });
+
+  // Chave que o checkbox de cada linha do modal de dívidas usa — por CARTÃO inteiro (a
+  // seção "Cartões" só mostra o total agregado, sem quebra por série) ou por SÉRIE
+  // (recurrenceGroupId, ou o próprio id se for avulsa) dentro de cada categoria.
+  private debtKeyFor(t: { creditCardId: string | null; recurrenceGroupId: string | null; id: string }): string {
+    return t.creditCardId ? `card:${t.creditCardId}` : `group:${t.recurrenceGroupId ?? t.id}`;
+  }
+
+  private monthKeyOfIso(iso: string): number {
+    const d = new Date(iso);
+    return d.getUTCFullYear() * 12 + d.getUTCMonth();
+  }
+
+  private static readonly EXCLUDED_DEBT_KEYS_STORAGE_KEY = 'true-balance:dashboard:excludedDebtKeys';
+
+  // Persistido em localStorage (não no backend) de propósito: é só uma preferência de
+  // EXIBIÇÃO — "não conta esse empréstimo específico na minha meta de quitar tudo agora"
+  // — não é um dado financeiro real que precise sincronizar entre dispositivos.
+  private loadExcludedDebtKeys(): ReadonlySet<string> {
+    try {
+      const raw = localStorage.getItem(Dashboard.EXCLUDED_DEBT_KEYS_STORAGE_KEY);
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch {
+      return new Set();
+    }
+  }
+
+  private readonly excludedDebtKeys = signal<ReadonlySet<string>>(this.loadExcludedDebtKeys());
+
+  // "Se eu pegasse X reais hoje, quitava tudo que devo" — soma tudo que ainda tá Pendente
+  // (qualquer conta ou cartão), menos o que é FIXA de propósito (assinatura mensal não é
+  // uma dívida que se "quita" de uma vez, sempre vai existir uma próxima cobrança) e menos
+  // o que o próprio usuário desmarcou no modal de detalhamento (ex: um empréstimo sem
+  // juros que ele não pretende quitar de uma vez só, mesmo podendo).
+  //
+  // No mês CORRENTE, é literalmente "hoje": todo Pendente conta, mesmo atrasado. Navegando
+  // pra outro mês, o texto e o valor mudam de figura — "quanto eu ainda vou dever EM
+  // {mês}" — assumindo que tudo com vencimento ANTES do mês navegado já foi pago em dia
+  // (ver isCurrentMonth acima). Estorno pendente reduz o total, mesma convenção de sempre.
+  readonly totalDebtToday = computed(() => {
+    const isCurrent = this.isCurrentMonth();
+    const selectedMonthKey = this.selectedYear() * 12 + (this.selectedMonth() - 1);
+    const excluded = this.excludedDebtKeys();
+
+    return this.allTransactions()
+      .filter((t) => t.type !== 'Transfer' && t.status === 'Pending' && !t.isFixed)
+      .filter((t) => isCurrent || this.monthKeyOfIso(t.date) >= selectedMonthKey)
+      .filter((t) => !excluded.has(this.debtKeyFor(t)))
+      .reduce((sum, t) => sum + (t.type === 'Income' ? -t.amount : t.amount), 0);
+  });
+
+  readonly debtCardTitle = computed(() =>
+    this.isCurrentMonth()
+      ? 'Quanto preciso pra quitar todas as minhas dívidas hoje?'
+      : `Quanto preciso pra quitar em ${this.selectedMonthLabelCapitalized()}?`,
+  );
+
+  // Quanto de despesa FIXA (assinaturas, mensalidades) cai no mês navegado — independe de
+  // já ter sido paga ou não (é sobre "quanto isso me custa por mês", não "quanto ainda
+  // falta pagar"), mesma convenção do resto do Resumo do Mês (soma tudo do mês, sem
+  // filtrar por status).
+  readonly monthlyFixedExpenseTotal = computed(() => {
+    const year = this.selectedYear();
+    const month = this.selectedMonth();
+
+    return this.allTransactions()
+      .filter((t) => t.type === 'Expense' && t.isFixed)
+      .filter((t) => {
+        const d = new Date(t.date);
+        return d.getUTCFullYear() === year && d.getUTCMonth() + 1 === month;
+      })
+      .reduce((sum, t) => sum + t.amount, 0);
+  });
+
   readonly daySortDirection = signal<'asc' | 'desc'>('asc');
 
   // No mês atual, os dias já passados deste mesmo mês raramente importam (já aconteceram
@@ -427,12 +531,16 @@ export class Dashboard {
     );
   }
 
-  readonly dayDetailModal = signal<{ label: string; date: Date; items: CashFlowDetailItem[]; total: number } | null>(
+  // Reaproveitado pelos três detalhamentos "i" do Dashboard (Linha do Tempo, dívidas
+  // pendentes, despesa fixa) — date é opcional porque só o da Linha do Tempo já é de um
+  // dia só (o cabeçalho mostra a data); os outros dois cruzam vários meses, cada item
+  // mostra a própria data (ver CashFlowDetailItem.date).
+  readonly detailModal = signal<{ label: string; date: Date | null; items: CashFlowDetailItem[]; total: number } | null>(
     null,
   );
 
   openDayDetail(day: DayCashFlow, kind: 'income' | 'expense'): void {
-    this.dayDetailModal.set({
+    this.detailModal.set({
       label: kind === 'income' ? 'Receitas' : 'Despesas',
       date: day.date,
       items: kind === 'income' ? day.incomeDetails : day.expenseDetails,
@@ -440,8 +548,189 @@ export class Dashboard {
     });
   }
 
-  closeDayDetail(): void {
-    this.dayDetailModal.set(null);
+  // Detalhamento das dívidas em duas camadas — de outro jeito (uma linha por ocorrência)
+  // uma parcelada em 10x vira 10 linhas, e a lista fica enorme e ilegível (ver histórico
+  // desta conversa). Uma seção "Cartões" só com o total agregado de cada cartão (sem
+  // quebra por série — esse detalhe já existe na aba Cartões, aqui só atrapalharia); as
+  // demais seções são as CATEGORIAS de verdade das dívidas sem cartão (ex: "Dívidas", se
+  // for a categoria real do empréstimo) — dentro delas sim, quebrado por série
+  // (recurrenceGroupId: as parcelas restantes de uma mesma compra viram uma linha só).
+  readonly debtDetailModal = signal<{ sections: DebtSection[] } | null>(null);
+  private readonly expandedDebtSections = signal<ReadonlySet<string>>(new Set(['cards']));
+  // Rascunho local dos checkboxes — só é aplicado de verdade (afeta o card do Dashboard)
+  // ao clicar Salvar; fechar sem salvar descarta (ver closeDebtDetail).
+  private readonly draftExcludedDebtKeys = signal<ReadonlySet<string>>(new Set());
+
+  isDebtSectionExpanded(key: string): boolean {
+    return this.expandedDebtSections().has(key);
+  }
+
+  toggleDebtSection(key: string): void {
+    this.expandedDebtSections.update((current) => {
+      const next = new Set(current);
+
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+
+      return next;
+    });
+  }
+
+  isDebtLeafChecked(key: string): boolean {
+    return !this.draftExcludedDebtKeys().has(key);
+  }
+
+  toggleDebtLeaf(key: string): void {
+    this.draftExcludedDebtKeys.update((current) => {
+      const next = new Set(current);
+
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+
+      return next;
+    });
+  }
+
+  // Total ao vivo de uma seção, considerando só os leaves ainda marcados no rascunho —
+  // método comum (não computed()) de propósito, igual outros lugares desta sessão que
+  // precisam reagir a mutação de signal em vez de só a troca do array inteiro.
+  debtSectionTotal(section: DebtSection): number {
+    const excluded = this.draftExcludedDebtKeys();
+    return section.leaves.filter((leaf) => !excluded.has(leaf.key)).reduce((sum, leaf) => sum + leaf.total, 0);
+  }
+
+  debtDetailGrandTotal(): number {
+    const excluded = this.draftExcludedDebtKeys();
+    return (this.debtDetailModal()?.sections ?? [])
+      .flatMap((section) => section.leaves)
+      .filter((leaf) => !excluded.has(leaf.key))
+      .reduce((sum, leaf) => sum + leaf.total, 0);
+  }
+
+  openDebtDetail(): void {
+    const isCurrent = this.isCurrentMonth();
+    const selectedMonthKey = this.selectedYear() * 12 + (this.selectedMonth() - 1);
+
+    const items = this.allTransactions()
+      .filter((t) => t.type !== 'Transfer' && t.status === 'Pending' && !t.isFixed)
+      .filter((t) => isCurrent || this.monthKeyOfIso(t.date) >= selectedMonthKey);
+
+    const cardById = new Map(this.creditCards().map((c) => [c.id, c]));
+    const categoryById = new Map(this.categories().map((c) => [c.id, c]));
+
+    const cardTotals = new Map<string, number>();
+    const categorySections = new Map<string, { label: string; leaves: Map<string, DebtLeaf> }>();
+
+    for (const t of items) {
+      const signedAmount = t.type === 'Income' ? -t.amount : t.amount;
+
+      if (t.creditCardId) {
+        cardTotals.set(t.creditCardId, (cardTotals.get(t.creditCardId) ?? 0) + signedAmount);
+        continue;
+      }
+
+      const section = categorySections.get(t.categoryId) ?? {
+        label: categoryById.get(t.categoryId)?.name ?? 'Outras dívidas',
+        leaves: new Map<string, DebtLeaf>(),
+      };
+      const leafKey = this.debtKeyFor(t);
+      const existingLeaf = section.leaves.get(leafKey);
+
+      if (existingLeaf) {
+        existingLeaf.count += 1;
+        existingLeaf.total += signedAmount;
+      } else {
+        section.leaves.set(leafKey, { key: leafKey, description: t.description, count: 1, total: signedAmount });
+      }
+
+      categorySections.set(t.categoryId, section);
+    }
+
+    const sections: DebtSection[] = [];
+
+    if (cardTotals.size > 0) {
+      const leaves = [...cardTotals.entries()]
+        .map(([cardId, total]) => ({
+          key: `card:${cardId}`,
+          description: cardById.get(cardId)?.name ?? 'Cartão',
+          count: 1,
+          total,
+        }))
+        .sort((a, b) => b.total - a.total);
+
+      sections.push({
+        key: 'cards',
+        label: 'Cartões',
+        total: leaves.reduce((sum, leaf) => sum + leaf.total, 0),
+        leaves,
+      });
+    }
+
+    for (const section of categorySections.values()) {
+      const leaves = [...section.leaves.values()].sort((a, b) => b.total - a.total);
+      sections.push({
+        key: `category:${section.label}`,
+        label: section.label,
+        total: leaves.reduce((sum, leaf) => sum + leaf.total, 0),
+        leaves,
+      });
+    }
+
+    sections.sort((a, b) => b.total - a.total);
+
+    this.expandedDebtSections.set(new Set(['cards']));
+    this.draftExcludedDebtKeys.set(this.excludedDebtKeys());
+    this.debtDetailModal.set({ sections });
+  }
+
+  saveDebtExclusions(): void {
+    const keys = this.draftExcludedDebtKeys();
+    this.excludedDebtKeys.set(keys);
+
+    try {
+      localStorage.setItem(Dashboard.EXCLUDED_DEBT_KEYS_STORAGE_KEY, JSON.stringify([...keys]));
+    } catch {
+      // Sem storage disponível (ex: modo privado) — a seleção só não sobrevive a um
+      // reload, mas continua valendo pelo resto desta sessão (já foi pro signal acima).
+    }
+
+    this.debtDetailModal.set(null);
+  }
+
+  closeDebtDetail(): void {
+    this.debtDetailModal.set(null);
+  }
+
+  // Mesma filtragem de monthlyFixedExpenseTotal(), item por item.
+  openFixedExpenseDetail(): void {
+    const year = this.selectedYear();
+    const month = this.selectedMonth();
+
+    const items = this.allTransactions()
+      .filter((t) => t.type === 'Expense' && t.isFixed)
+      .filter((t) => {
+        const d = new Date(t.date);
+        return d.getUTCFullYear() === year && d.getUTCMonth() + 1 === month;
+      })
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((t) => ({ description: t.description, amount: t.amount, date: t.date }));
+
+    this.detailModal.set({
+      label: `Despesa fixa — ${this.selectedMonthLabelCapitalized()}`,
+      date: null,
+      items,
+      total: this.monthlyFixedExpenseTotal(),
+    });
+  }
+
+  closeDetailModal(): void {
+    this.detailModal.set(null);
   }
 
   private readonly unsortedDailyCashFlow = computed<DayCashFlow[] | undefined>(() => {
