@@ -1,74 +1,182 @@
 <div class="p-6">
   <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-bold text-gray-800">Cartões de Crédito</h1>
-    <a
-      routerLink="/credit-cards/new"
+    <button
+      type="button"
+      (click)="openNewModal()"
       class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition"
     >
       Novo
-    </a>
+    </button>
   </div>
 
-  @if (creditCards(); as creditCardList) {
-    @if (creditCardList.length === 0) {
+  @if (creditCardSummaries(); as summaries) {
+    @if (summaries.length === 0) {
       <p class="text-gray-500">Nenhum cartão cadastrado.</p>
     } @else {
-      <table class="w-full border-collapse bg-white shadow-sm rounded-lg overflow-hidden">
-        <thead class="bg-gray-100 text-left text-sm text-gray-600">
-          <tr>
-            <th class="px-4 py-2">Ícone</th>
-            <th class="px-4 py-2">Nome</th>
-            <th class="px-4 py-2">Fechamento</th>
-            <th class="px-4 py-2">Vencimento</th>
-            <th class="px-4 py-2">Limite</th>
-            <th class="px-4 py-2"></th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (creditCard of creditCardList; track creditCard.id) {
-            <tr class="border-t border-gray-200">
-              <td class="px-4 py-2">
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        @for (summary of summaries; track summary.card.id) {
+          <div class="bg-white shadow-sm rounded-lg p-4">
+            <div class="flex items-start justify-between gap-2 mb-3">
+              <div class="flex items-center gap-2 min-w-0">
                 <span
-                  class="flex items-center justify-center w-8 h-8 rounded-full shrink-0"
-                  [style.background-color]="cardColor(creditCard.color)"
+                  class="flex items-center justify-center w-9 h-9 rounded-full shrink-0"
+                  [style.background-color]="cardColor(summary.card.color)"
                 >
-                  <lucide-icon [name]="resolveIconName(creditCard.icon)" [size]="16" color="white"></lucide-icon>
+                  <lucide-icon [name]="resolveIconName(summary.card.icon)" [size]="18" color="white"></lucide-icon>
                 </span>
-              </td>
-              <td class="px-4 py-2">{{ creditCard.name }}</td>
-              <td class="px-4 py-2">Dia {{ creditCard.closingDay }}</td>
-              <td class="px-4 py-2">Dia {{ creditCard.dueDay }}</td>
-              <td class="px-4 py-2 font-medium">{{ creditCard.limit | currency: 'BRL' }}</td>
-              <td class="px-4 py-2 text-right whitespace-nowrap">
-                <a
-                  [routerLink]="['/credit-cards', creditCard.id, 'invoice']"
-                  class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-gray-100 transition text-gray-500"
-                  aria-label="Ver fatura"
-                >
-                  <lucide-icon name="receipt" [size]="16"></lucide-icon>
-                </a>
-                <a
-                  [routerLink]="['/credit-cards', creditCard.id, 'edit']"
-                  class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-gray-100 transition text-gray-500"
-                  aria-label="Editar cartão"
-                >
-                  <lucide-icon name="pencil" [size]="16"></lucide-icon>
-                </a>
+                <div class="min-w-0">
+                  <p class="font-semibold text-gray-800 truncate">{{ summary.card.name }}</p>
+                  <p class="text-xs text-gray-400">
+                    Fecha dia {{ summary.card.closingDay }} — vence dia {{ summary.card.dueDay }}
+                  </p>
+                </div>
+              </div>
+              <div class="relative shrink-0">
                 <button
                   type="button"
-                  (click)="deleteCreditCard(creditCard.id, creditCard.name)"
-                  class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-red-50 transition text-red-500"
-                  aria-label="Excluir cartão"
+                  (click)="toggleCardMenu(summary.card.id)"
+                  class="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-gray-100 transition text-gray-500"
+                  aria-label="Mais opções"
+                  title="Mais opções"
                 >
-                  <lucide-icon name="trash-2" [size]="16"></lucide-icon>
+                  <lucide-icon name="ellipsis-vertical" [size]="16"></lucide-icon>
                 </button>
-              </td>
-            </tr>
-          }
-        </tbody>
-      </table>
+
+                @if (openMenuCardId() === summary.card.id) {
+                  <div class="fixed inset-0 z-40" (click)="closeCardMenu()"></div>
+                  <div class="absolute right-0 mt-1 w-36 bg-white rounded-lg shadow-lg py-1 z-50 border border-gray-100">
+                    <button
+                      type="button"
+                      (click)="openEditModal(summary.card.id); closeCardMenu()"
+                      class="flex items-center gap-2 w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition"
+                    >
+                      <lucide-icon name="pencil" [size]="14"></lucide-icon>
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      (click)="deleteCreditCard(summary.card.id, summary.card.name); closeCardMenu()"
+                      class="flex items-center gap-2 w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition"
+                    >
+                      <lucide-icon name="trash-2" [size]="14"></lucide-icon>
+                      Excluir
+                    </button>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <div class="flex justify-between text-xs text-gray-500 mb-1">
+                <span>Limite usado</span>
+                <span>
+                  {{ summary.usedLimit | currency: 'BRL' }} de {{ summary.card.limit | currency: 'BRL' }}
+                </span>
+              </div>
+              <div class="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                <div class="h-full rounded-full bg-blue-500" [style.width.%]="usedLimitPercent(summary)"></div>
+              </div>
+              <div class="flex justify-end mt-1">
+                <span
+                  class="text-[10px]"
+                  [class.text-green-600]="availableLimit(summary) >= 0"
+                  [class.text-red-600]="availableLimit(summary) < 0"
+                >
+                  {{ availableLimit(summary) | currency: 'BRL' }} disponível
+                </span>
+              </div>
+            </div>
+
+            <div class="pt-3 border-t border-gray-100">
+              <div class="flex items-center justify-between mb-1 gap-2">
+                <span class="text-xs text-gray-500">
+                  Fatura atual — {{ summary.cycleState === 'closed' ? 'vence' : 'fecha' }} dia
+                  {{
+                    (summary.cycleState === 'closed' ? summary.currentDueDate : summary.currentClosingDate)
+                      | date: 'dd/MM' : 'UTC'
+                  }}
+                </span>
+                <span
+                  class="inline-flex items-center shrink-0 px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase border whitespace-nowrap {{
+                    invoiceStatusBadgeClass(summary)
+                  }}"
+                >
+                  {{ invoiceStatusLabel(summary) }}
+                </span>
+              </div>
+              @if (summary.cycleState === 'future') {
+                <!-- Futura: inverte o destaque — a previsão final é o número grande
+                     (é o que importa pra planejamento, ainda nem começou a acumular de
+                     verdade), e "Valor atual" (quase sempre zero ou bem baixo) fica
+                     pequeno embaixo, só de referência. -->
+                <p
+                  class="text-lg font-semibold"
+                  [class.text-gray-800]="summary.currentTotal >= 0"
+                  [class.text-green-600]="summary.currentTotal < 0"
+                >
+                  {{ summary.currentTotal < 0 ? '+' : '' }}
+                  {{ (summary.currentTotal < 0 ? -summary.currentTotal : summary.currentTotal) | currency: 'BRL' }}
+                </p>
+                @if (summary.currentConfirmedTotal !== summary.currentTotal) {
+                  <p class="text-xs text-gray-400">
+                    Valor atual:
+                    {{ summary.currentConfirmedTotal < 0 ? '+' : '' }}
+                    {{
+                      (summary.currentConfirmedTotal < 0 ? -summary.currentConfirmedTotal : summary.currentConfirmedTotal)
+                        | currency: 'BRL'
+                    }}
+                  </p>
+                }
+              } @else {
+                <p
+                  class="text-lg font-semibold"
+                  [class.text-gray-800]="summary.currentConfirmedTotal >= 0"
+                  [class.text-green-600]="summary.currentConfirmedTotal < 0"
+                >
+                  {{ summary.currentConfirmedTotal < 0 ? '+' : '' }}
+                  {{
+                    (summary.currentConfirmedTotal < 0 ? -summary.currentConfirmedTotal : summary.currentConfirmedTotal)
+                      | currency: 'BRL'
+                  }}
+                </p>
+                @if (summary.currentConfirmedTotal !== summary.currentTotal) {
+                  <p class="text-xs text-gray-400">
+                    Previsão final:
+                    {{ summary.currentTotal < 0 ? '+' : '' }}
+                    {{ (summary.currentTotal < 0 ? -summary.currentTotal : summary.currentTotal) | currency: 'BRL' }}
+                  </p>
+                }
+              }
+              <a
+                [routerLink]="['/credit-cards', summary.card.id, 'invoice']"
+                class="inline-flex items-center gap-1 mt-1 text-sm text-blue-600 hover:underline"
+              >
+                <lucide-icon name="receipt" [size]="14"></lucide-icon>
+                Ver fatura
+              </a>
+            </div>
+
+            <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-100 text-xs">
+              <span class="text-gray-400">Próximas faturas</span>
+              <span class="text-gray-600 font-medium">
+                {{ summary.upcomingTotal < 0 ? '+' : '' }}
+                {{ (summary.upcomingTotal < 0 ? -summary.upcomingTotal : summary.upcomingTotal) | currency: 'BRL' }}
+              </span>
+            </div>
+          </div>
+        }
+      </div>
     }
   } @else {
     <p class="text-gray-500">Carregando...</p>
+  }
+
+  @if (modalRequest(); as request) {
+    <app-credit-card-form-modal
+      [creditCardId]="request.creditCardId"
+      (closed)="onModalClosed()"
+      (saved)="onModalSaved()"
+    />
   }
 </div>

@@ -1,0 +1,9 @@
+<app-modal
+  [title]="formRef()?.formTitle() ?? ''"
+  [isDirty]="formRef()?.isDirty() ?? false"
+  [saving]="formRef()?.saving() ?? false"
+  (close)="onClose()"
+  (save)="onSave()"
+>
+  <app-credit-card-form [creditCardId]="creditCardId()" (saved)="onSaved()" />
+</app-modal>

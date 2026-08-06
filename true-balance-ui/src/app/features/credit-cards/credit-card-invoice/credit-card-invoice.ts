@@ -1,4 +1,4 @@
-import { CurrencyPipe, DatePipe } from '@angular/common';
+import { CurrencyPipe, DatePipe, NgTemplateOutlet } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { combineLatest, map, switchMap } from 'rxjs';
@@ -16,7 +16,7 @@ import { STATUS_BADGE_BASE_CLASS, STATUS_BADGE_CLASS } from '../../../shared/uti
 
 @Component({
   selector: 'app-credit-card-invoice',
-  imports: [RouterLink, CurrencyPipe, DatePipe, LucideAngularModule],
+  imports: [RouterLink, CurrencyPipe, DatePipe, LucideAngularModule, NgTemplateOutlet],
   templateUrl: './credit-card-invoice.html',
   styleUrl: './credit-card-invoice.scss',
 })
@@ -76,6 +76,35 @@ export class CreditCardInvoice {
     ),
   );
 
+  // Formato próprio pro separador de dia ("Quinta, 18 de jun") — não dá pra montar isso só
+  // com tokens do DatePipe: o CLDR do pt-BR abrevia dia da semana com ponto e "-feira"
+  // (ex: "qui.", "quinta-feira") e mês com ponto (ex: "jun."), nenhum bate com o formato
+  // pedido. Lê os componentes em UTC (mesma cautela de fuso do resto do formulário) —
+  // a Date guardada é sempre meia-noite UTC, ler em hora local podia cair no dia anterior.
+  private static readonly WEEKDAY_NAMES = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+  private static readonly MONTH_ABBREVIATIONS = [
+    'jan',
+    'fev',
+    'mar',
+    'abr',
+    'mai',
+    'jun',
+    'jul',
+    'ago',
+    'set',
+    'out',
+    'nov',
+    'dez',
+  ];
+
+  formatDayHeader(dateIso: string): string {
+    const date = new Date(dateIso);
+    const weekday = CreditCardInvoice.WEEKDAY_NAMES[date.getUTCDay()];
+    const month = CreditCardInvoice.MONTH_ABBREVIATIONS[date.getUTCMonth()];
+
+    return `${weekday}, ${date.getUTCDate()} de ${month}`;
+  }
+
   readonly sortDirection = signal<'asc' | 'desc'>('asc');
 
   toggleSort(): void {
@@ -115,10 +144,61 @@ export class CreditCardInvoice {
   });
 
   // Um estorno é lançado como Receita nesse mesmo cartão (ver botão "Registrar Estorno")
-  // — reduz o total da fatura, não soma junto com as compras.
+  // — reduz o total da fatura, não soma junto com as compras. Esse é o valor FINAL
+  // previsto pra fatura, já contando fixas que ainda nem chegaram (ver confirmedTotal).
   readonly invoiceTotal = computed(() =>
     (this.invoiceItems() ?? []).reduce((sum, t) => sum + (t.type === 'Income' ? -t.amount : t.amount), 0),
   );
+
+  // Quanto da fatura já é "real" HOJE — igual o app do banco mostra. Compra avulsa ou
+  // parcelada conta inteira desde já (a dívida foi assumida no ato da compra). FIXA é
+  // diferente: só conta se o dia dela (o dia real em que aquela cobrança específica cai,
+  // não o mês da fatura) já chegou — uma assinatura que só vai cobrar daqui a duas
+  // semanas ainda não é um gasto de verdade, é só a projeção de que vai repetir.
+  readonly confirmedTotal = computed(() => {
+    const items = this.invoiceItems() ?? [];
+    const now = new Date();
+    const todayUtcMidnight = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+
+    return items.reduce((sum, t) => {
+      if (t.isFixed && new Date(t.purchaseDate ?? t.date) > todayUtcMidnight) {
+        return sum;
+      }
+
+      return sum + (t.type === 'Income' ? -t.amount : t.amount);
+    }, 0);
+  });
+
+  // Agrupa itens do MESMO dia (data de compra, ou vencimento quando não tem) sob uma
+  // barra separadora com a data completa — todo dia entra num grupo (mesmo com uma
+  // compra só), pra deixar claro visualmente que a lista é organizada por dia (ver
+  // template); como a data completa já aparece ali, as linhas de compra abaixo não
+  // repetem "dd/MM" (esse espaço vira o ícone da categoria). Como invoiceItems() já vem
+  // ordenado (asc/desc), itens do mesmo dia sempre ficam consecutivos — dá pra agrupar
+  // num loop simples, sem precisar reordenar depois.
+  readonly invoiceDayGroups = computed(() => {
+    const items = this.invoiceItems();
+
+    if (!items) {
+      return undefined;
+    }
+
+    const groups: { dayKey: string; dateIso: string; items: typeof items }[] = [];
+
+    for (const item of items) {
+      const dateIso = item.purchaseDate ?? item.date;
+      const dayKey = dateIso.slice(0, 10);
+      const last = groups.length > 0 ? groups[groups.length - 1] : undefined;
+
+      if (last && last.dayKey === dayKey) {
+        last.items.push(item);
+      } else {
+        groups.push({ dayKey, dateIso, items: [item] });
+      }
+    }
+
+    return groups;
+  });
 
   // A fatura é um fato único: paga ou não, nunca "meio paga" — na prática, todos os itens
   // devem sempre ter o mesmo status (o botão de alternar atualiza todos juntos). Se por

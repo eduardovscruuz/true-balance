@@ -7,7 +7,7 @@ import { CategoryForm } from './features/categories/category-form/category-form'
 import { CategoryList } from './features/categories/category-list/category-list';
 import { SubcategoryForm } from './features/categories/subcategory-form/subcategory-form';
 import { SubcategoryList } from './features/categories/subcategory-list/subcategory-list';
-import { CreditCardForm } from './features/credit-cards/credit-card-form/credit-card-form';
+import { CreditCardFormPage } from './features/credit-cards/credit-card-form/credit-card-form-page';
 import { CreditCardInvoice } from './features/credit-cards/credit-card-invoice/credit-card-invoice';
 import { CreditCardList } from './features/credit-cards/credit-card-list/credit-card-list';
 import { Dashboard } from './features/dashboard/dashboard';
@@ -26,8 +26,8 @@ export const routes: Routes = [
   { path: 'accounts/new', component: AccountForm },
   { path: 'accounts/:id/edit', component: AccountForm },
   { path: 'credit-cards', component: CreditCardList },
-  { path: 'credit-cards/new', component: CreditCardForm },
-  { path: 'credit-cards/:id/edit', component: CreditCardForm },
+  { path: 'credit-cards/new', component: CreditCardFormPage },
+  { path: 'credit-cards/:id/edit', component: CreditCardFormPage },
   { path: 'credit-cards/:id/invoice', component: CreditCardInvoice },
   { path: 'transactions', component: TransactionList },
   { path: 'transactions/ai', component: AiTransactionEntryPage },

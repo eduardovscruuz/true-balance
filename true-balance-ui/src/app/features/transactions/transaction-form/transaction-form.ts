@@ -5,6 +5,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Observable, combineLatest, map } from 'rxjs';
 
 import { ConfirmDialog } from '../../../shared/ui-components/confirm-dialog/confirm-dialog';
+import { computeCreditCardInvoice, creditCardClosingDateFromDueDate } from '../../../shared/utils/credit-card-invoice.util';
 import { CurrencyMaskDirective } from '../../../shared/directives/currency-mask.directive';
 import { CreateTransaction, Transaction, TransactionStatus, TransactionType } from '../../../core/models/transaction.model';
 import { AccountService } from '../../../core/services/account.service';
@@ -321,7 +322,7 @@ export class TransactionForm implements OnInit {
     const installmentMonthOffset =
       this.isInstallmentValue() && this.installmentNumberValue() ? this.installmentNumberValue()! - 1 : 0;
 
-    return this.computeCreditCardInvoice(year, month, day, creditCard.closingDay, creditCard.dueDay, installmentMonthOffset)
+    return computeCreditCardInvoice(year, month, day, creditCard.closingDay, creditCard.dueDay, installmentMonthOffset)
       .dueDate;
   });
 
@@ -351,7 +352,7 @@ export class TransactionForm implements OnInit {
 
     if (this.isEditMode() && this.isFixedValue()) {
       const [year, month, day] = this.dateValue().split('-').map(Number);
-      const closingDate = this.creditCardClosingDateFromDueDate(year, month, creditCard.closingDay, creditCard.dueDay);
+      const closingDate = creditCardClosingDateFromDueDate(year, month, creditCard.closingDay, creditCard.dueDay);
       return { closingDate, dueDate: new Date(Date.UTC(year, month - 1, day)) };
     }
 
@@ -363,7 +364,7 @@ export class TransactionForm implements OnInit {
       const installmentMonthOffset =
         this.isInstallmentValue() && this.installmentNumberValue() ? this.installmentNumberValue()! - 1 : 0;
 
-      return this.computeCreditCardInvoice(
+      return computeCreditCardInvoice(
         year,
         month,
         day,
@@ -379,7 +380,7 @@ export class TransactionForm implements OnInit {
       const [overrideYear, overrideMonth] = override.split('-').map(Number);
       const clampedDueDay = Math.min(creditCard.dueDay, new Date(overrideYear, overrideMonth, 0).getDate());
       const dueDate = new Date(Date.UTC(overrideYear, overrideMonth - 1, clampedDueDay));
-      const closingDate = this.creditCardClosingDateFromDueDate(
+      const closingDate = creditCardClosingDateFromDueDate(
         overrideYear,
         overrideMonth,
         creditCard.closingDay,
@@ -396,7 +397,7 @@ export class TransactionForm implements OnInit {
     const installmentMonthOffset =
       this.isInstallmentValue() && this.installmentNumberValue() ? this.installmentNumberValue()! - 1 : 0;
 
-    return this.computeCreditCardInvoice(
+    return computeCreditCardInvoice(
       year,
       month,
       day,
@@ -455,6 +456,18 @@ export class TransactionForm implements OnInit {
   // exatamente igual a ela, não faz sentido reoferecer a mesma sugestão de novo.
   // Volta a null assim que o usuário digitar qualquer coisa diferente disso.
   private readonly lastAppliedSuggestionDescription = signal<string | null>(null);
+
+  // Se o usuário decidiu não usar a sugestão (ex: vai completar a descrição com algo tipo
+  // "30mg" no final), tirar o foco do campo tem que fechar a lista — sem isso ela ficava
+  // sobrepondo os campos de baixo (Valor etc.) mesmo depois de ele já ter clicado noutro
+  // lugar. Ao clicar numa sugestão, o botão usa (mousedown) com preventDefault (ver
+  // template) em vez de (click) — isso evita que o navegador tire o foco do input ANTES do
+  // clique ser processado (senão a lista já teria sumido e o clique nunca aplicaria nada).
+  readonly descriptionFocused = signal(false);
+
+  readonly showDescriptionSuggestions = computed(
+    () => this.descriptionFocused() && this.descriptionSuggestions().length > 0,
+  );
 
   // Sugere preencher Categoria/Subcategoria/Conta ou Cartão a partir do próprio
   // histórico — ex: toda vez que você lança "Gasolina", é sempre a mesma categoria e a
@@ -1055,72 +1068,4 @@ export class TransactionForm implements OnInit {
     return this.creditCards().find((c) => c.id === this.selectedCreditCardId())?.dueDay ?? null;
   }
 
-  // Dada uma data de COMPRA, determina em qual fatura ela cai: se o dia da compra é
-  // depois do fechamento do cartão, a fatura fecha no mês seguinte (perdeu a deste mês).
-  // O vencimento fica no mesmo mês do fechamento se dueDay > closingDay (venceu antes do
-  // próximo fechamento), senão no mês seguinte ao fechamento.
-  //
-  // installmentMonthOffset desloca esse resultado N meses pra frente — usado quando o
-  // usuário registra diretamente a parcela N (não a 1ª) de uma compra parcelada: a data
-  // de compra digitada continua sendo a da compra original (1ª parcela), mas ESTA
-  // ocorrência específica vence N-1 meses depois dela.
-  private computeCreditCardInvoice(
-    purchaseYear: number,
-    purchaseMonth: number,
-    purchaseDay: number,
-    closingDay: number,
-    dueDay: number,
-    installmentMonthOffset = 0,
-  ): { closingDate: Date; dueDate: Date } {
-    // Índice absoluto de mês (ano*12 + mês, 0-based) evita loops manuais de overflow
-    // pra somar meses — tanto no cálculo normal quanto no deslocamento de parcela.
-    let closingMonthIndex = purchaseYear * 12 + (purchaseMonth - 1);
-
-    if (purchaseDay > closingDay) {
-      closingMonthIndex += 1;
-    }
-
-    closingMonthIndex += installmentMonthOffset;
-
-    let dueMonthIndex = closingMonthIndex;
-
-    if (dueDay <= closingDay) {
-      dueMonthIndex += 1;
-    }
-
-    const closingYear = Math.floor(closingMonthIndex / 12);
-    const closingMonth = (closingMonthIndex % 12) + 1;
-    const dueYear = Math.floor(dueMonthIndex / 12);
-    const dueMonth = (dueMonthIndex % 12) + 1;
-
-    const closingDate = new Date(Date.UTC(closingYear, closingMonth - 1, closingDay));
-    const clampedDueDay = Math.min(dueDay, new Date(dueYear, dueMonth, 0).getDate());
-    const dueDate = new Date(Date.UTC(dueYear, dueMonth - 1, clampedDueDay));
-
-    return { closingDate, dueDate };
-  }
-
-  // Caminho inverso do acima: dado um vencimento já salvo (Data de uma despesa de cartão
-  // em edição), reconstrói o fechamento correspondente — necessário pra saber se essa
-  // fatura já fechou, sem reprocessar o vencimento como se fosse uma data de compra nova.
-  private creditCardClosingDateFromDueDate(
-    dueYear: number,
-    dueMonth: number,
-    closingDay: number,
-    dueDay: number,
-  ): Date {
-    let closingMonth = dueMonth;
-    let closingYear = dueYear;
-
-    if (dueDay <= closingDay) {
-      closingMonth -= 1;
-
-      if (closingMonth < 1) {
-        closingMonth = 12;
-        closingYear -= 1;
-      }
-    }
-
-    return new Date(Date.UTC(closingYear, closingMonth - 1, closingDay));
-  }
 }

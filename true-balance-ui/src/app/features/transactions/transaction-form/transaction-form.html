@@ -43,17 +43,19 @@
         class="w-full border rounded-md px-3 py-2 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
         [class.border-gray-300]="form.controls.description.valid || form.controls.description.untouched"
         [class.border-red-500]="form.controls.description.invalid && form.controls.description.touched"
+        (focus)="descriptionFocused.set(true)"
+        (blur)="descriptionFocused.set(false)"
       />
       @if (form.controls.description.invalid && form.controls.description.touched) {
         <p class="text-xs text-red-600 mt-1">Descrição é obrigatória.</p>
       }
-      @if (descriptionSuggestions().length > 0) {
+      @if (showDescriptionSuggestions()) {
         <ul class="absolute z-10 left-0 right-0 mt-1 border border-gray-200 rounded-md shadow-lg bg-white divide-y divide-gray-100 overflow-hidden">
           @for (suggestion of descriptionSuggestions(); track suggestion.description) {
             <li>
               <button
                 type="button"
-                (click)="applySuggestion(suggestion)"
+                (mousedown)="$event.preventDefault(); applySuggestion(suggestion)"
                 class="w-full flex items-center gap-2 text-left px-3 py-2 hover:bg-gray-50 transition"
               >
                 @if (suggestion.categoryColor) {
