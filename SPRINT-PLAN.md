@@ -11,14 +11,14 @@ relevantes) e o que validar antes de considerar concluído.
 
 ---
 
-## Sprint 1 — Componentizar a tabela de transações (base: Fatura do Cartão)
+## ✅ Sprint 1 — Componentizar a tabela de transações (base: Fatura do Cartão)
 
 A visualização agrupada por dia que já existe em `credit-card-invoice.html` (barra
 separadora com a data completa por extenso, ex: "Quinta, 18 de jun", ícone da categoria no
 lugar da coluna Data, sempre expandida/sem colapsar) funciona bem e vira a base de dois
 componentes reutilizáveis.
 
-### 1.1 Extrair o componente de fatura de cartão
+### ✅ 1.1 Extrair o componente de fatura de cartão
 
 Pegar a tabela que já existe em `credit-card-invoice.ts`/`.html` (incluindo
 `invoiceDayGroups`, `formatDayHeader`, o `<ng-template #itemRow>`, o botão de ordenar por
@@ -26,7 +26,7 @@ data) e extrair pra um componente próprio em `shared/ui-components/` (ex:
 `card-invoice-table`). `CreditCardInvoice` passa a só orquestrar dados (fetch, fatura
 atual, pagar/reverter) e usar esse componente pra exibição.
 
-### 1.2 Criar o componente geral de transações (duplicar e adaptar)
+### ✅ 1.2 Criar o componente geral de transações (duplicar e adaptar)
 
 A partir do componente acima, criar um segundo (ex: `transaction-table`) pra usar em
 "Transações do Mês" (`transaction-list.ts`/`.html`), com colunas a mais:
@@ -39,7 +39,7 @@ A partir do componente acima, criar um segundo (ex: `transaction-table`) pra usa
 - Colunas: ícone + Descrição | Categoria (nome) | Conta | Status | Valor | ações.
 - Continua mostrando `(fixa)` / `(N/M)` do jeito que já mostra hoje.
 
-### 1.3 Botões Pagar/Receber viram ícone
+### ✅ 1.3 Botões Pagar/Receber viram ícone
 
 Trocar os botões de texto ("PAGAR"/"RECEBER") por ícone só — check verde pra Receber, algo
 vermelho (ex: um ícone de pagamento) pra Pagar. Objetivo: tamanho fixo e padronizado
@@ -54,27 +54,27 @@ cada um (abre o modal de confirmação já existente).
 
 ---
 
-## Sprint 2 — Linha do Tempo Diária mais compacta
+## ✅ Sprint 2 — Linha do Tempo Diária mais compacta
 
 Hoje a tabela lista todo dia do mês, mesmo sem nenhuma transação — ocupa espaço à toa.
 Novo comportamento:
 
-### 2.1 Dias passados
+### ✅ 2.1 Dias passados
 
 Continuam escondidos por padrão (já existe), mas precisa ganhar uma forma de **esconder de
 novo** depois de expandido (hoje só expande, não tem toggle pra fechar de volta).
 
-### 2.2 Dia de hoje
+### ✅ 2.2 Dia de hoje
 
 Sempre visível.
 
-### 2.3 Dias futuros
+### ✅ 2.3 Dias futuros
 
 Ficam todos escondidos por padrão, **exceto o último dia do mês** (pra dar a noção de "o
 mês termina com este saldo"). Ganha uma opção de expandir pra ver os dias futuros
 intermediários.
 
-### 2.4 Ao expandir os dias futuros: colapsar faixas sem movimento
+### ✅ 2.4 Ao expandir os dias futuros: colapsar faixas sem movimento
 
 Dias consecutivos sem nenhuma receita/despesa viram **uma linha só**, tipo "21 a 30" com
 Receitas R$ 0,00 / Despesas R$ 0,00. Se depois for lançada uma transação num dia dentro
@@ -92,7 +92,7 @@ dinamicamente em torno de qualquer dia com movimento real.
 
 ---
 
-## Sprint 3 — Dashboard: Resumo do Mês mais completo
+## ✅ Sprint 3 — Dashboard: Resumo do Mês mais completo
 
 Nos cards de Receitas/Despesas do "Resumo do Mês", detalhar mais o total:
 
@@ -109,7 +109,7 @@ layout ou a expansão por categoria que já existe.
 
 ---
 
-## Sprint 4 — Transações do Mês: abas Despesa/Receita
+## ✅ Sprint 4 — Transações do Mês: abas Despesa/Receita
 
 Mesma UX de abas que `category-list` já tem (Despesa / Receita). Aplicar em
 `transaction-list` — usando o componente novo do Sprint 1 — permitindo ver tudo misturado
@@ -141,11 +141,13 @@ hoje, só precisa de um novo lugar fixo pra morar na tela (a lógica de estado n
 
 Ícone de pincel no rodapé da sidebar, alinhado ao fundo — abre um modal de estilização
 com:
+
 - Toggle Claro/Escuro.
 - Seletor de "cor de destaque" — ainda sem uso definido no app (o usuário vai indicar,
   telinha por telinha, onde aplicar essa cor conforme for surgindo a necessidade).
 
 **Pendências técnicas a decidir na hora de implementar:**
+
 - Onde persistir a preferência de tema/cor — não existe conceito de usuário/login no
   backend hoje, então o candidato natural é `localStorage` (mesmo padrão já usado pra
   preferência de dívidas excluídas no Dashboard), não uma tabela nova no banco.
@@ -176,11 +178,11 @@ de dados. Elas conseguem se achar porque estão todas na mesma rede interna do D
 Quando for pra produção, cada uma dessas três caixinhas vai morar num lugar diferente, na
 internet, e vai precisar do **endereço público** das outras pra conseguir conversar:
 
-| Peça | Onde mora | O que é |
-|---|---|---|
-| Frontend (Angular) | **Vercel** | O site que você abre no navegador |
-| API (.NET) | **Railway** | O "cérebro" que recebe pedidos do site e fala com o banco |
-| Banco de dados (Postgres) | **Railway** | Onde os dados de verdade ficam guardados |
+| Peça                      | Onde mora   | O que é                                                   |
+| ------------------------- | ----------- | --------------------------------------------------------- |
+| Frontend (Angular)        | **Vercel**  | O site que você abre no navegador                         |
+| API (.NET)                | **Railway** | O "cérebro" que recebe pedidos do site e fala com o banco |
+| Banco de dados (Postgres) | **Railway** | Onde os dados de verdade ficam guardados                  |
 
 Por que Vercel pro site e Railway pra API+banco, em vez de tudo num lugar só? Vercel é
 feito sob medida (e de graça, na prática) pra sites como o seu (só arquivos estáticos,
@@ -208,43 +210,47 @@ continuamente (a API e o banco). É a combinação mais comum pra esse tipo de p
 ### Passo a passo
 
 **1. Banco de dados primeiro (Railway)**
-   - Criar um banco Postgres no Railway (alguns cliques no site deles: "New Project" →
-     "Provision PostgreSQL"). Ele te dá um "endereço de conexão" pronto (parecido com o
-     que já existe no `docker-compose.yml`, só que apontando pro servidor deles, não pro
-     seu computador).
-   - Esse banco nasce vazio. Tem duas partes pra preencher ele:
-     1. Rodar as migrações nele, pra criar as tabelas.
-     2. **Copiar os dados que você já tem** do banco local pro banco novo — existe uma
-        ferramenta padrão do Postgres pra isso (`pg_dump`/`pg_restore`, resumindo: "tira
-        uma foto de tudo que tem no banco de hoje" e "cola essa foto no banco novo"). Vou
-        te guiar nisso quando chegar a hora — é o passo mais delicado, porque envolve seus
-        dados reais, então vamos com calma e conferindo cada etapa.
+
+- Criar um banco Postgres no Railway (alguns cliques no site deles: "New Project" →
+  "Provision PostgreSQL"). Ele te dá um "endereço de conexão" pronto (parecido com o
+  que já existe no `docker-compose.yml`, só que apontando pro servidor deles, não pro
+  seu computador).
+- Esse banco nasce vazio. Tem duas partes pra preencher ele:
+  1.  Rodar as migrações nele, pra criar as tabelas.
+  2.  **Copiar os dados que você já tem** do banco local pro banco novo — existe uma
+      ferramenta padrão do Postgres pra isso (`pg_dump`/`pg_restore`, resumindo: "tira
+      uma foto de tudo que tem no banco de hoje" e "cola essa foto no banco novo"). Vou
+      te guiar nisso quando chegar a hora — é o passo mais delicado, porque envolve seus
+      dados reais, então vamos com calma e conferindo cada etapa.
 
 **2. API (Railway)**
-   - Conectar o repositório do GitHub no Railway, apontando pra pasta certa
-     (`src/TrueBalance.Api`), usando o Dockerfile de produção que já existe.
-   - Configurar lá (pelo painel do Railway, sem mexer em código) essas informações
-     sensíveis, chamadas de **variáveis de ambiente** — pensa nelas como "post-its" que só
-     aquele servidor consegue ler, nunca ficam expostos no código:
-     - O endereço de conexão do banco (do passo 1).
-     - Sua chave da API do Gemini (a mesma que já existe no `.env` hoje).
-   - Fazer a mudança de código pra liberar o CORS pro endereço do Vercel (ver acima).
-   - No final desse passo, o Railway te dá um endereço público pra API (algo tipo
-     `https://true-balance-api-production.up.railway.app`).
+
+- Conectar o repositório do GitHub no Railway, apontando pra pasta certa
+  (`src/TrueBalance.Api`), usando o Dockerfile de produção que já existe.
+- Configurar lá (pelo painel do Railway, sem mexer em código) essas informações
+  sensíveis, chamadas de **variáveis de ambiente** — pensa nelas como "post-its" que só
+  aquele servidor consegue ler, nunca ficam expostos no código:
+  - O endereço de conexão do banco (do passo 1).
+  - Sua chave da API do Gemini (a mesma que já existe no `.env` hoje).
+- Fazer a mudança de código pra liberar o CORS pro endereço do Vercel (ver acima).
+- No final desse passo, o Railway te dá um endereço público pra API (algo tipo
+  `https://true-balance-api-production.up.railway.app`).
 
 **3. Frontend (Vercel)**
-   - Conectar o mesmo repositório do GitHub na Vercel, apontando a "pasta raiz" pra
-     `true-balance-ui`. A Vercel já sabe reconhecer projetos Angular sozinha.
-   - Ajustar o endereço da API que o site usa (trocar o `/api` relativo pelo endereço
-     completo do Railway, do passo 2).
-   - No final, a Vercel te dá um endereço público pro site (algo tipo
-     `https://true-balance.vercel.app`, ou um domínio seu, se você tiver um).
+
+- Conectar o mesmo repositório do GitHub na Vercel, apontando a "pasta raiz" pra
+  `true-balance-ui`. A Vercel já sabe reconhecer projetos Angular sozinha.
+- Ajustar o endereço da API que o site usa (trocar o `/api` relativo pelo endereço
+  completo do Railway, do passo 2).
+- No final, a Vercel te dá um endereço público pro site (algo tipo
+  `https://true-balance.vercel.app`, ou um domínio seu, se você tiver um).
 
 **4. Ligando as pontas**
-   - Depois que os três passos acima estiverem prontos, ainda falta: colocar o endereço
-     da Vercel na lista de convidados (CORS) da API, e colocar o endereço da API no site —
-     ou seja, os passos 2 e 3 dependem um do outro, então normalmente se faz um ajuste
-     final depois que os dois já têm endereço público.
+
+- Depois que os três passos acima estiverem prontos, ainda falta: colocar o endereço
+  da Vercel na lista de convidados (CORS) da API, e colocar o endereço da API no site —
+  ou seja, os passos 2 e 3 dependem um do outro, então normalmente se faz um ajuste
+  final depois que os dois já têm endereço público.
 
 ### Sobre acessar o banco depois (sua pergunta)
 
