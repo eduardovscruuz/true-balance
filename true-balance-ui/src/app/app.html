@@ -112,3 +112,7 @@
 @if (aiModal.isOpen()) {
   <app-ai-transaction-entry-modal (closed)="aiModal.close()" />
 }
+
+@if (payInvoiceModal.request()) {
+  <app-pay-invoice-modal />
+}

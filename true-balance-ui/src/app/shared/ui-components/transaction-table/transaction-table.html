@@ -1,0 +1,168 @@
+@if (rows(); as rowList) {
+  @if (rowList.length === 0) {
+    <p class="text-gray-500">Nenhuma transação neste mês.</p>
+  } @else {
+    <table class="w-full border-collapse bg-white shadow-sm rounded-lg overflow-hidden">
+      <thead class="bg-gray-100 text-left text-sm text-gray-600">
+        <tr>
+          <th class="pl-6 pr-1 py-2 w-16">
+            <button
+              type="button"
+              (click)="toggleSort()"
+              class="w-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition"
+              aria-label="Ordenar por data"
+              title="Ordenar por data"
+            >
+              {{ sortDirection() === 'asc' ? '▲' : '▼' }}
+            </button>
+          </th>
+          <th class="px-4 py-2"></th>
+          <th class="px-4 py-2">Categoria</th>
+          <th class="px-4 py-2">Conta</th>
+          <th class="px-4 py-2">Status</th>
+          <th class="px-4 py-2">Valor</th>
+          <th class="px-4 py-2"></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (group of dayGroups(); track group.dayKey) {
+          <tr class="border-t border-gray-200 bg-gray-50">
+            <td class="px-4 py-1.5 text-xs font-medium text-gray-500" colspan="7">
+              {{ formatDayHeader(group.dateIso) }}
+            </td>
+          </tr>
+
+          @for (row of group.rows; track trackRow(row)) {
+            @if (row.kind === 'cardInvoice') {
+              <tr
+                [routerLink]="['/credit-cards', row.creditCardId, 'invoice']"
+                class="border-t border-gray-200 cursor-pointer hover:bg-gray-50 transition"
+              >
+                <td class="pl-6 pr-1 py-2 w-16">
+                  <span
+                    class="flex items-center justify-center w-8 h-8 rounded-full shrink-0"
+                    [style.background-color]="row.cardColor ?? '#9CA3AF'"
+                  >
+                    <lucide-icon [name]="resolveIconName(row.cardIcon ?? 'credit-card')" [size]="16" color="white"></lucide-icon>
+                  </span>
+                </td>
+                <td class="pl-1 pr-4 py-2">
+                  <span class="font-medium text-gray-800">Fatura de {{ row.invoiceMonthLabel }}</span>
+                  <span class="ml-1 text-[10px] font-semibold text-gray-400 uppercase">
+                    ({{ row.itemCount }} {{ row.itemCount === 1 ? 'compra' : 'compras' }})
+                  </span>
+                </td>
+                <td class="px-4 py-2 text-gray-600">Cartão {{ row.cardName }}</td>
+                <td class="px-4 py-2 text-gray-600">
+                  <div class="flex items-center gap-2">
+                    <span
+                      class="flex items-center justify-center w-6 h-6 rounded-md text-white text-[10px] font-semibold shrink-0"
+                      [style.background-color]="row.accountColor ?? '#9CA3AF'"
+                    >
+                      {{ row.accountName | initials }}
+                    </span>
+                    <span>{{ row.accountName }}</span>
+                  </div>
+                </td>
+                <td class="px-4 py-2">
+                  @if (row.paymentTiming) {
+                    <span class="{{ statusBadgeBaseClass }} {{ paymentTimingBadgeClass[row.paymentTiming] }}">
+                      {{ paymentTimingLabel[row.paymentTiming] }}
+                    </span>
+                  } @else {
+                    <span class="{{ statusBadgeBaseClass }} {{ statusBadgeClass[row.status] }}">
+                      {{ row.status === 'Paid' ? 'Pago' : 'Pendente' }}
+                    </span>
+                  }
+                </td>
+                <td
+                  class="px-4 py-2 font-medium"
+                  [class.text-red-600]="row.amount > 0"
+                  [class.text-green-600]="row.amount <= 0"
+                >
+                  {{ row.amount > 0 ? '-' : '+' }}{{ (row.amount > 0 ? row.amount : -row.amount) | currency: 'BRL' }}
+                </td>
+                <td class="px-4 py-2 text-right whitespace-nowrap">
+                  @if (row.status === 'Pending') {
+                    <button
+                      type="button"
+                      (click)="onPayInvoice($event, row)"
+                      class="inline-flex items-center justify-center w-8 h-8 rounded-full text-white bg-red-600 shadow-sm ring-1 ring-black/5 transition cursor-pointer hover:scale-110 hover:bg-red-700 hover:shadow-md active:scale-95"
+                      aria-label="Pagar fatura"
+                      title="Pagar fatura"
+                    >
+                      <lucide-icon name="banknote-arrow-up" [size]="16"></lucide-icon>
+                    </button>
+                  }
+                </td>
+              </tr>
+            } @else {
+              <tr (click)="onEdit(row.id)" class="border-t border-gray-200 cursor-pointer hover:bg-gray-50 transition">
+                <td class="pl-6 pr-1 py-2 w-16">
+                  @if (row.categoryColor) {
+                    <span
+                      class="flex items-center justify-center w-8 h-8 rounded-full shrink-0"
+                      [style.background-color]="row.categoryColor"
+                    >
+                      <lucide-icon [name]="resolveIconName(row.categoryIcon ?? '')" [size]="16" color="white"></lucide-icon>
+                    </span>
+                  }
+                </td>
+                <td class="pl-1 pr-4 py-2">
+                  {{ row.description }}
+                  @if (row.isFixed) {
+                    <span class="ml-1 text-[10px] font-semibold text-gray-400 uppercase">(fixa)</span>
+                  }
+                  @if (row.installmentNumber && row.totalInstallments) {
+                    <span class="ml-1 text-[10px] font-semibold text-gray-400 uppercase">({{ row.installmentNumber }}/{{ row.totalInstallments }})</span>
+                  }
+                </td>
+                <td class="px-4 py-2 text-gray-600">{{ row.categoryName }}</td>
+                <td class="px-4 py-2 text-gray-600">
+                  <div class="flex items-center gap-2">
+                    <span
+                      class="flex items-center justify-center w-6 h-6 rounded-md text-white text-[10px] font-semibold shrink-0"
+                      [style.background-color]="row.accountColor ?? '#9CA3AF'"
+                    >
+                      {{ row.accountName | initials }}
+                    </span>
+                    <span>{{ row.accountName }}</span>
+                  </div>
+                </td>
+                <td class="px-4 py-2">
+                  <span class="{{ statusBadgeBaseClass }} {{ statusBadgeClass[row.status] }}">
+                    {{ row.status === 'Paid' ? 'Pago' : 'Pendente' }}
+                  </span>
+                </td>
+                <td
+                  class="px-4 py-2 font-medium"
+                  [class.text-red-600]="row.type === 'Expense'"
+                  [class.text-green-600]="row.type === 'Income'"
+                >
+                  {{ row.type === 'Expense' ? '-' : '+' }}{{ row.amount | currency: 'BRL' }}
+                </td>
+                <td class="px-4 py-2 text-right whitespace-nowrap">
+                  @if (row.status === 'Pending') {
+                    <button
+                      type="button"
+                      (click)="onPay($event, row.id)"
+                      class="inline-flex items-center justify-center w-8 h-8 rounded-full text-white shadow-sm ring-1 ring-black/5 transition cursor-pointer hover:scale-110 hover:shadow-md active:scale-95 {{
+                        row.type === 'Income' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+                      }}"
+                      [attr.aria-label]="row.type === 'Income' ? 'Receber' : 'Pagar'"
+                      [attr.title]="row.type === 'Income' ? 'Receber' : 'Pagar'"
+                    >
+                      <lucide-icon [name]="row.type === 'Income' ? 'banknote-arrow-down' : 'banknote-arrow-up'" [size]="16"></lucide-icon>
+                    </button>
+                  }
+                </td>
+              </tr>
+            }
+          }
+        }
+      </tbody>
+    </table>
+  }
+} @else {
+  <p class="text-gray-500">Carregando...</p>
+}

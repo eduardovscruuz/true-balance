@@ -1,33 +1,25 @@
-import { CurrencyPipe, DatePipe } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { switchMap } from 'rxjs';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
 
 import { AccountService } from '../../../core/services/account.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { CreditCardService } from '../../../core/services/credit-card.service';
 import { MonthSelectionService } from '../../../core/services/month-selection.service';
+import { PayInvoiceModalService } from '../../../core/services/pay-invoice-modal.service';
 import { SubcategoryService } from '../../../core/services/subcategory.service';
 import { TransactionModalService } from '../../../core/services/transaction-modal.service';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { CreateTransaction, Transaction } from '../../../core/models/transaction.model';
 import { CurrencyMaskDirective } from '../../../shared/directives/currency-mask.directive';
-import { InitialsPipe } from '../../../shared/pipes/initials.pipe';
-import { resolveLucideIconName } from '../../../shared/utils/lucide-icon.util';
-import {
-  PAYMENT_TIMING_BADGE_CLASS,
-  PAYMENT_TIMING_LABEL,
-  STATUS_BADGE_BASE_CLASS,
-  STATUS_BADGE_CLASS,
-  computePaymentTiming,
-} from '../../../shared/utils/payment-status.util';
+import { TransactionTable } from '../../../shared/ui-components/transaction-table/transaction-table';
+import { computePaymentTiming } from '../../../shared/utils/payment-status.util';
 
 @Component({
   selector: 'app-transaction-list',
-  imports: [RouterLink, CurrencyPipe, DatePipe, LucideAngularModule, InitialsPipe, FormsModule, CurrencyMaskDirective],
+  imports: [LucideAngularModule, TransactionTable, FormsModule, CurrencyMaskDirective],
   templateUrl: './transaction-list.html',
   styleUrl: './transaction-list.scss',
 })
@@ -41,6 +33,7 @@ export class TransactionList {
   // esta tela só lê os signals, nunca tem o próprio estado de mês.
   private readonly monthSelection = inject(MonthSelectionService);
   protected readonly transactionModal = inject(TransactionModalService);
+  protected readonly payInvoiceModal = inject(PayInvoiceModalService);
 
   private readonly refreshTrigger = signal(0);
 
@@ -73,23 +66,13 @@ export class TransactionList {
   private readonly creditCards = toSignal(this.creditCardService.getAll(), { initialValue: [] });
   private readonly accounts = toSignal(this.accountService.getAll(), { initialValue: [] });
 
-  readonly resolveIconName = resolveLucideIconName;
-
-  readonly statusBadgeBaseClass = STATUS_BADGE_BASE_CLASS;
-  readonly statusBadgeClass = STATUS_BADGE_CLASS;
-  readonly paymentTimingLabel = PAYMENT_TIMING_LABEL;
-  readonly paymentTimingBadgeClass = PAYMENT_TIMING_BADGE_CLASS;
-
-  readonly sortField = signal<'date' | 'amount'>('date');
+  // Agrupar por dia (ver TransactionTable) exige que a lista esteja ordenada por data —
+  // por isso, diferente da versão antiga, só existe ordenação por data aqui (mesmo padrão
+  // de toggle asc/desc já usado na Fatura do Cartão).
   readonly sortDirection = signal<'asc' | 'desc'>('desc');
 
-  toggleSort(field: 'date' | 'amount'): void {
-    if (this.sortField() === field) {
-      this.sortDirection.update((dir) => (dir === 'asc' ? 'desc' : 'asc'));
-    } else {
-      this.sortField.set(field);
-      this.sortDirection.set('desc');
-    }
+  toggleSort(): void {
+    this.sortDirection.update((dir) => (dir === 'asc' ? 'desc' : 'asc'));
   }
 
   // Compras de cartão não aparecem uma por uma aqui — são agrupadas numa linha só por
@@ -167,6 +150,8 @@ export class TransactionList {
         cardColor: creditCard?.color ?? null,
         cardIcon: creditCard?.icon ?? null,
         invoiceMonthLabel,
+        dueYear: new Date(dueDate).getUTCFullYear(),
+        dueMonth: new Date(dueDate).getUTCMonth() + 1,
         accountName: paymentAccountName,
         accountColor: paymentAccount?.color ?? null,
         // Data única exibida na tabela: quando foi PAGA, se já foi — senão o vencimento,
@@ -188,12 +173,9 @@ export class TransactionList {
       };
     });
 
-    const field = this.sortField();
     const multiplier = this.sortDirection() === 'asc' ? 1 : -1;
 
-    return [...transactionRows, ...cardRows].sort((a, b) =>
-      field === 'amount' ? (a.amount - b.amount) * multiplier : a.date.localeCompare(b.date) * multiplier,
-    );
+    return [...transactionRows, ...cardRows].sort((a, b) => a.date.localeCompare(b.date) * multiplier);
   });
 
   readonly confirmModal = signal<Transaction | null>(null);
@@ -205,11 +187,9 @@ export class TransactionList {
 
   // Botão "Receber"/"Pagar" da tabela: abre modal de confirmação em vez de ir direto
   // pro formulário, já que o valor pode precisar de ajuste (ex: salário com hora extra,
-  // desconto por pagar adiantado) antes de confirmar. stopPropagation evita disparar a
-  // navegação da linha (que leva pra edição).
-  openConfirmModal(id: string, event: Event): void {
-    event.stopPropagation();
-
+  // desconto por pagar adiantado) antes de confirmar. O stopPropagation (evita disparar a
+  // navegação da linha, que leva pra edição) já é feito dentro do TransactionTable.
+  openConfirmModal(id: string): void {
     const transaction = this.allTransactions()?.find((t) => t.id === id);
     if (!transaction) {
       return;
