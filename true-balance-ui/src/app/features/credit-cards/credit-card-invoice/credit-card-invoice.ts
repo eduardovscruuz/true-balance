@@ -1,11 +1,13 @@
 import { CurrencyPipe, DatePipe, NgTemplateOutlet } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { FormsModule } from '@angular/forms';
 import { combineLatest, map, switchMap } from 'rxjs';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
 
 import { ConfirmDialog } from '../../../shared/ui-components/confirm-dialog/confirm-dialog';
+import { CurrencyMaskDirective } from '../../../shared/directives/currency-mask.directive';
 import { CategoryService } from '../../../core/services/category.service';
 import { CreditCardService } from '../../../core/services/credit-card.service';
 import { MonthSelectionService } from '../../../core/services/month-selection.service';
@@ -17,7 +19,16 @@ import { STATUS_BADGE_BASE_CLASS, STATUS_BADGE_CLASS } from '../../../shared/uti
 
 @Component({
   selector: 'app-credit-card-invoice',
-  imports: [RouterLink, CurrencyPipe, DatePipe, LucideAngularModule, NgTemplateOutlet, ConfirmDialog],
+  imports: [
+    RouterLink,
+    CurrencyPipe,
+    DatePipe,
+    LucideAngularModule,
+    NgTemplateOutlet,
+    ConfirmDialog,
+    FormsModule,
+    CurrencyMaskDirective,
+  ],
   templateUrl: './credit-card-invoice.html',
   styleUrl: './credit-card-invoice.scss',
 })
@@ -225,18 +236,71 @@ export class CreditCardInvoice {
   // Um único fluxo de "escolher data" serve tanto pra pagar (Pendente -> Pago) quanto
   // pra corrigir a data de um pagamento já registrado — as duas ações são idênticas no
   // fim (SetInvoiceStatusAsync com Status=Paid + a data escolhida), só o valor inicial
-  // sugerido no campo muda (hoje, ao pagar; a data já salva, ao editar).
+  // sugerido no campo muda (hoje, ao pagar; a data já salva, ao editar). isNewPayment
+  // distingue os dois só pra decidir se mostra o campo de Valor pago/crédito adiantado
+  // abaixo — editar a data de um pagamento já feito não deveria gerar um crédito de novo
+  // toda vez.
   readonly isPickingPaidDate = signal(false);
+  readonly isNewPayment = signal(true);
   readonly paidDateInput = signal(this.todayAsInputValue());
+
+  // "Vou pagar a mais pra já liberar limite" — se o valor pago passar do total da fatura,
+  // a diferença vira um crédito (estorno) lançado direto na fatura do mês SEGUINTE deste
+  // mesmo cartão, com status Pendente (reduz o total daquela fatura quando ela chegar,
+  // igual qualquer outro estorno). Categoria é obrigatória porque o modelo de Transaction
+  // exige uma (nunca fica sem — ver CreateTransaction), então pedimos aqui mesmo.
+  readonly paidAmountInput = signal<number | null>(null);
+  readonly overpaymentCategoryId = signal<string>('');
+
+  readonly incomeCategories = computed(() => this.categories().filter((c) => c.type === 'Income'));
+
+  readonly overpaymentAmount = computed(() => {
+    const paid = this.paidAmountInput();
+
+    if (paid === null) {
+      return 0;
+    }
+
+    const diff = paid - this.invoiceTotal();
+    return diff > 0 ? diff : 0;
+  });
+
+  private nextYearMonth(): { year: number; month: number } {
+    const { year, month } = this.yearMonth();
+    const index = year * 12 + (month - 1) + 1;
+    return { year: Math.floor(index / 12), month: (index % 12) + 1 };
+  }
+
+  readonly nextInvoiceMonthLabel = computed(() => {
+    const { year, month } = this.nextYearMonth();
+    const rawLabel = new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'long' });
+    return `${rawLabel.charAt(0).toUpperCase()}${rawLabel.slice(1)}/${year}`;
+  });
+
+  private nextInvoiceDueDate(): Date | null {
+    const card = this.creditCard();
+
+    if (!card) {
+      return null;
+    }
+
+    const { year, month } = this.nextYearMonth();
+    const daysInMonth = new Date(year, month, 0).getDate();
+    return new Date(Date.UTC(year, month - 1, Math.min(card.dueDay, daysInMonth)));
+  }
 
   startPaying(): void {
     this.paidDateInput.set(this.todayAsInputValue());
+    this.paidAmountInput.set(this.invoiceTotal());
+    this.overpaymentCategoryId.set('');
+    this.isNewPayment.set(true);
     this.isPickingPaidDate.set(true);
   }
 
   startEditingPaidDate(): void {
     const current = this.invoicePaidDate();
     this.paidDateInput.set(current ? this.isoToInputValue(current) : this.todayAsInputValue());
+    this.isNewPayment.set(false);
     this.isPickingPaidDate.set(true);
   }
 
@@ -248,6 +312,14 @@ export class CreditCardInvoice {
     this.paidDateInput.set(value);
   }
 
+  setPaidAmountInput(value: number | null): void {
+    this.paidAmountInput.set(value);
+  }
+
+  setOverpaymentCategoryId(value: string): void {
+    this.overpaymentCategoryId.set(value);
+  }
+
   confirmPaidDate(): void {
     const cardId = this.creditCardId();
 
@@ -256,8 +328,40 @@ export class CreditCardInvoice {
     }
 
     const { year, month } = this.yearMonth();
+    const overpayment = this.isNewPayment() ? this.overpaymentAmount() : 0;
+    const overpaymentCategoryId = this.overpaymentCategoryId();
+    const nextDueDate = this.nextInvoiceDueDate();
 
     this.transactionService.setInvoiceStatus(cardId, year, month, 'Paid', `${this.paidDateInput()}T00:00:00Z`).subscribe(() => {
+      if (overpayment > 0 && overpaymentCategoryId && nextDueDate) {
+        this.transactionService
+          .create({
+            accountId: null,
+            creditCardId: cardId,
+            categoryId: overpaymentCategoryId,
+            subcategoryId: null,
+            type: 'Income',
+            status: 'Pending',
+            amount: overpayment,
+            description: 'Crédito por pagamento adiantado',
+            date: nextDueDate.toISOString(),
+            isFixed: false,
+            installmentInfo: null,
+            recurrenceGroupId: null,
+            recurrenceDay: null,
+            recurrenceEndDate: null,
+            installmentNumber: null,
+            totalInstallments: null,
+            paidDate: null,
+            purchaseDate: null,
+          })
+          .subscribe(() => {
+            this.isPickingPaidDate.set(false);
+            this.refreshTrigger.update((n) => n + 1);
+          });
+        return;
+      }
+
       this.isPickingPaidDate.set(false);
       this.refreshTrigger.update((n) => n + 1);
     });

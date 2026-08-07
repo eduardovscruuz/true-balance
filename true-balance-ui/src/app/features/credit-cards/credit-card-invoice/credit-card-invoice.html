@@ -47,61 +47,40 @@
           </p>
         }
         @if (invoiceStatus(); as status) {
-          @if (isPickingPaidDate()) {
-            <div class="mt-1 flex items-center gap-1 justify-end">
-              <input
-                type="date"
-                [value]="paidDateInput()"
-                (input)="setPaidDateInput($any($event.target).value)"
-                class="border border-gray-300 rounded-md px-2 py-1 text-xs"
-              />
+          @if (!isPickingPaidDate()) {
+            @if (status === 'Paid') {
+              <div class="mt-1 flex items-center justify-end gap-1">
+                <span class="{{ statusBadgeBaseClass }} {{ statusBadgeClass.Paid }}">
+                  Pago em {{ invoicePaidDate() | date: 'dd/MM' : 'UTC' }}
+                </span>
+                <button
+                  type="button"
+                  (click)="markAsPending()"
+                  class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 transition text-gray-400"
+                  aria-label="Reverter — marcar como Pendente"
+                  title="Reverter — marcar como Pendente"
+                >
+                  <lucide-icon name="undo-2" [size]="14"></lucide-icon>
+                </button>
+                <button
+                  type="button"
+                  (click)="startEditingPaidDate()"
+                  class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 transition text-gray-400"
+                  aria-label="Editar data de pagamento"
+                  title="Editar data de pagamento"
+                >
+                  <lucide-icon name="pencil" [size]="14"></lucide-icon>
+                </button>
+              </div>
+            } @else {
               <button
                 type="button"
-                (click)="confirmPaidDate()"
-                class="px-2 py-1 rounded-md text-xs bg-green-600 text-white hover:bg-green-700 transition"
+                (click)="startPaying()"
+                class="mt-1 px-4 py-1.5 rounded-md text-sm font-semibold bg-green-600 text-white hover:bg-green-700 transition"
               >
-                OK
+                Pagar
               </button>
-              <button
-                type="button"
-                (click)="cancelPaidDatePicker()"
-                class="px-2 py-1 rounded-md text-xs text-gray-500 hover:bg-gray-100 transition"
-              >
-                Cancelar
-              </button>
-            </div>
-          } @else if (status === 'Paid') {
-            <div class="mt-1 flex items-center justify-end gap-1">
-              <span class="{{ statusBadgeBaseClass }} {{ statusBadgeClass.Paid }}">
-                Pago em {{ invoicePaidDate() | date: 'dd/MM' : 'UTC' }}
-              </span>
-              <button
-                type="button"
-                (click)="markAsPending()"
-                class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 transition text-gray-400"
-                aria-label="Reverter — marcar como Pendente"
-                title="Reverter — marcar como Pendente"
-              >
-                <lucide-icon name="undo-2" [size]="14"></lucide-icon>
-              </button>
-              <button
-                type="button"
-                (click)="startEditingPaidDate()"
-                class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 transition text-gray-400"
-                aria-label="Editar data de pagamento"
-                title="Editar data de pagamento"
-              >
-                <lucide-icon name="pencil" [size]="14"></lucide-icon>
-              </button>
-            </div>
-          } @else {
-            <button
-              type="button"
-              (click)="startPaying()"
-              class="mt-1 px-4 py-1.5 rounded-md text-sm font-semibold bg-green-600 text-white hover:bg-green-700 transition"
-            >
-              Pagar
-            </button>
+            }
           }
         }
       </div>
@@ -230,4 +209,82 @@
     (secondarySelected)="confirmDeleteOnlyThis()"
     (confirmed)="confirmDeleteWholeSeries()"
   />
+}
+
+@if (isPickingPaidDate()) {
+  <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50" (click)="cancelPaidDatePicker()">
+    <div class="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full mx-4" (click)="$event.stopPropagation()">
+      <h3 class="text-lg font-semibold text-gray-800 mb-4">
+        {{ isNewPayment() ? 'Pagar fatura' : 'Editar data de pagamento' }}
+      </h3>
+
+      <div class="mb-3">
+        <label class="block text-sm font-medium text-gray-700 mb-1" for="paidDate">Data do pagamento</label>
+        <input
+          id="paidDate"
+          type="date"
+          [value]="paidDateInput()"
+          (input)="setPaidDateInput($any($event.target).value)"
+          class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
+      @if (isNewPayment()) {
+        <div class="mb-3">
+          <label class="block text-sm font-medium text-gray-700 mb-1" for="paidAmount">Valor pago</label>
+          <input
+            id="paidAmount"
+            type="text"
+            inputmode="numeric"
+            appCurrencyMask
+            [ngModel]="paidAmountInput()"
+            (ngModelChange)="setPaidAmountInput($event)"
+            class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <p class="text-xs text-gray-400 mt-1">Fatura atual: {{ invoiceTotal() | currency: 'BRL' }}</p>
+        </div>
+
+        @if (overpaymentAmount() > 0) {
+          <div class="mb-3 bg-blue-50 border border-blue-100 rounded-md p-3">
+            <p class="text-xs text-blue-800">
+              Você tá pagando {{ overpaymentAmount() | currency: 'BRL' }} a mais — isso vira um crédito
+              (estorno pendente) na fatura de {{ nextInvoiceMonthLabel() }} deste cartão.
+            </p>
+            <label class="block text-xs font-medium text-gray-700 mt-2 mb-1" for="overpaymentCategory">
+              Categoria do crédito <span class="text-red-500">*</span>
+            </label>
+            <select
+              id="overpaymentCategory"
+              [ngModel]="overpaymentCategoryId()"
+              (ngModelChange)="setOverpaymentCategoryId($event)"
+              class="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="" disabled>Selecione</option>
+              @for (category of incomeCategories(); track category.id) {
+                <option [value]="category.id">{{ category.name }}</option>
+              }
+            </select>
+          </div>
+        }
+      }
+
+      <div class="flex justify-end gap-2 mt-4">
+        <button
+          type="button"
+          (click)="cancelPaidDatePicker()"
+          class="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 transition text-sm"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          (click)="confirmPaidDate()"
+          [disabled]="isNewPayment() && overpaymentAmount() > 0 && !overpaymentCategoryId()"
+          class="px-4 py-2 rounded-md bg-green-600 text-white hover:bg-green-700 transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Confirmar
+        </button>
+      </div>
+    </div>
+  </div>
 }
