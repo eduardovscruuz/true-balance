@@ -191,14 +191,31 @@ public class TransactionService : ITransactionService
         // ocorridos, e nunca uma pendente mais antiga que porventura ainda exista pra trás).
         if (transaction.RecurrenceGroupId is Guid groupId)
         {
-            var pendingInSeries = await _context.Transactions
-                .Where(t => t.RecurrenceGroupId == groupId
-                    && t.Status == TransactionStatus.Pending
-                    && t.Date >= transaction.Date
-                    && t.Id != id)
+            var seriesTransactions = await _context.Transactions
+                .Where(t => t.RecurrenceGroupId == groupId && t.Id != id)
                 .ToListAsync();
 
+            var pendingInSeries = seriesTransactions
+                .Where(t => t.Status == TransactionStatus.Pending && t.Date >= transaction.Date)
+                .ToList();
+
             _context.Transactions.RemoveRange(pendingInSeries);
+
+            // Sem isso, ProjectFixedExpensesAsync (roda no startup, a cada 24h, e em toda
+            // criação/edição de QUALQUER transação fixa/parcelada — ver ProjectIfRecurringAsync)
+            // ressuscita essas ocorrências: ela olha só "existe uma transação nesse grupo,
+            // até onde o RecurrenceEndDate dela permite gerar?", sem nenhum sinal de que o
+            // usuário acabou de excluir a série a partir daqui de propósito. Grava o corte
+            // em TODAS as que sobraram (não só a mais recente) — a projeção usa a de maior
+            // Date pra decidir, mas deixar todas consistentes evita esse mesmo bug
+            // reaparecer se uma dessas for editada depois.
+            var remainingInSeries = seriesTransactions.Except(pendingInSeries);
+            var cutoffMonth = transaction.Date.AddMonths(-1);
+
+            foreach (var sibling in remainingInSeries)
+            {
+                sibling.RecurrenceEndDate = cutoffMonth;
+            }
         }
 
         _context.Transactions.Remove(transaction);

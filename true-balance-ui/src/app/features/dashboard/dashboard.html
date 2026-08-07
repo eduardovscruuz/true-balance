@@ -9,51 +9,62 @@
     } @else {
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
         @for (item of displayedBalances(); track item.accountId) {
-          <button
-            type="button"
-            (click)="selectAccount(item.accountId)"
-            class="text-left bg-white shadow-sm rounded-lg p-4 border-2 transition"
+          <div
+            class="bg-white shadow-sm rounded-lg p-4 border-2 transition"
             [class.border-blue-500]="item.accountId === activeAccountId()"
             [class.border-transparent]="item.accountId !== activeAccountId()"
           >
-            <div class="flex items-center gap-2 mb-2">
-              <span
-                class="flex items-center justify-center w-6 h-6 rounded-md text-white text-[10px] font-semibold shrink-0"
-                [style.background-color]="item.color"
-              >
-                {{ item.name | initials }}
-              </span>
-              <span class="text-sm text-gray-600 truncate">{{ item.name }}</span>
-            </div>
-            <p
-              class="text-lg font-semibold"
-              [class.text-red-600]="item.balance < 0"
-              [class.text-gray-800]="item.balance >= 0"
-            >
-              {{ item.balance | currency: 'BRL' }}
-            </p>
-
-            <div class="mt-2 pt-2 border-t border-gray-100 text-xs space-y-0.5">
-              <div class="flex justify-between gap-2">
-                <span class="text-gray-400">Entradas</span>
-                <span class="text-green-600">+{{ item.monthlyIncome | currency: 'BRL' }}</span>
-              </div>
-              <div class="flex justify-between gap-2">
-                <span class="text-gray-400">Saídas</span>
-                <span class="text-red-600">-{{ item.monthlyExpense | currency: 'BRL' }}</span>
-              </div>
-              <div class="flex justify-between gap-2">
-                <span class="text-gray-400">Saldo fim do mês</span>
+            <button type="button" (click)="selectAccount(item.accountId)" class="block w-full text-left mb-3">
+              <div class="flex items-center gap-2 mb-2">
                 <span
-                  class="font-medium"
-                  [class.text-red-600]="item.endOfMonthBalance < 0"
-                  [class.text-gray-700]="item.endOfMonthBalance >= 0"
+                  class="flex items-center justify-center w-6 h-6 rounded-md text-white text-[10px] font-semibold shrink-0"
+                  [style.background-color]="item.color"
                 >
-                  {{ item.endOfMonthBalance | currency: 'BRL' }}
+                  {{ item.name | initials }}
                 </span>
+                <span class="text-sm text-gray-600 truncate">{{ item.name }}</span>
               </div>
+
+              <p
+                class="text-lg font-semibold"
+                [class.text-red-600]="item.balance < 0"
+                [class.text-gray-800]="item.balance >= 0"
+              >
+                {{ item.balance | currency: 'BRL' }}
+              </p>
+            </button>
+
+            <div class="space-y-1.5">
+              <button
+                type="button"
+                (click)="openAccountSummaryDetail(item.accountId, 'Income')"
+                class="flex justify-between items-center gap-2 w-full text-left bg-white hover:bg-green-50 border border-gray-200 hover:border-green-500 rounded-md px-3 py-2 cursor-pointer transition-all duration-150 hover:-translate-y-0.5"
+              >
+                <span class="text-[10px] font-bold text-green-700 uppercase tracking-wide">Entradas</span>
+                <span class="text-sm text-green-600">+{{ item.monthlyIncome | currency: 'BRL' }}</span>
+              </button>
+              <button
+                type="button"
+                (click)="openAccountSummaryDetail(item.accountId, 'Expense')"
+                class="flex justify-between items-center gap-2 w-full text-left bg-white hover:bg-red-50 border border-gray-200 hover:border-red-500 rounded-md px-3 py-2 cursor-pointer transition-all duration-150 hover:-translate-y-0.5"
+              >
+                <span class="text-[10px] font-bold text-red-700 uppercase tracking-wide">Saídas</span>
+                <span class="text-sm text-red-600">-{{ item.monthlyExpense | currency: 'BRL' }}</span>
+              </button>
+              @if (isCurrentMonth()) {
+                <div class="flex justify-between items-center gap-2 px-3 py-1">
+                  <span class="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Previsão para fim do mês</span>
+                  <span
+                    class="text-sm"
+                    [class.text-red-600]="item.endOfMonthBalance < 0"
+                    [class.text-gray-700]="item.endOfMonthBalance >= 0"
+                  >
+                    {{ item.endOfMonthBalance | currency: 'BRL' }}
+                  </span>
+                </div>
+              }
             </div>
-          </button>
+          </div>
         }
       </div>
     }
@@ -156,162 +167,10 @@
     }
   </section>
 
-  <section class="mb-8">
-    <h2 class="text-lg font-semibold text-gray-700 mb-3">Resumo do Mês</h2>
-
-    @if (monthSummary(); as summaryList) {
-      @if (summaryList.length === 0) {
-        <p class="text-gray-500">Nenhuma transação encontrada para esta conta neste mês.</p>
-      } @else {
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <h3 class="text-sm font-semibold text-green-700 mb-2">Receitas</h3>
-            @if (incomeSummary(); as list) {
-              @if (list.length === 0) {
-                <p class="text-sm text-gray-400">Nenhuma receita neste mês.</p>
-              } @else {
-                <ul class="bg-white shadow-sm rounded-lg divide-y divide-gray-200">
-                  @for (summary of list; track summary.categoryId) {
-                    <li>
-                      <div
-                        class="flex justify-between items-center px-4 py-2"
-                        [class.cursor-pointer]="hasSummaryBreakdown(summary)"
-                        [class.hover:bg-gray-50]="hasSummaryBreakdown(summary)"
-                        (click)="hasSummaryBreakdown(summary) && toggleSummaryExpanded(summary.categoryId)"
-                      >
-                        <div class="flex items-center gap-2">
-                          @if (hasSummaryBreakdown(summary)) {
-                            <lucide-icon
-                              [name]="isSummaryExpanded(summary.categoryId) ? 'chevron-down' : 'chevron-right'"
-                              [size]="14"
-                              class="text-gray-400 shrink-0"
-                            ></lucide-icon>
-                          }
-                          <span
-                            class="flex items-center justify-center w-7 h-7 rounded-full shrink-0"
-                            [style.background-color]="summary.categoryColor ?? '#9CA3AF'"
-                          >
-                            <lucide-icon [name]="resolveIconName(summary.categoryIcon ?? '')" [size]="14" color="white"></lucide-icon>
-                          </span>
-                          <span class="text-gray-600">{{ summary.categoryName }}</span>
-                        </div>
-                        <span class="font-medium text-gray-700">{{ summary.total | currency: 'BRL' }}</span>
-                      </div>
-
-                      @if (isSummaryExpanded(summary.categoryId)) {
-                        @if (summary.subcategories.length > 0) {
-                          <ul class="bg-gray-50 divide-y divide-gray-100">
-                            @for (sub of summary.subcategories; track sub.subcategoryId ?? 'none') {
-                              <li class="flex justify-between items-center px-4 py-1.5 pl-11 gap-2">
-                                <span class="text-sm text-gray-500 flex items-center gap-2">
-                                  {{ sub.subcategoryName }}
-                                  @if (sub.paymentTiming) {
-                                    <span class="{{ statusBadgeBaseClass }} {{ paymentTimingBadgeClass[sub.paymentTiming] }}">
-                                      {{ paymentTimingLabel[sub.paymentTiming] }}
-                                    </span>
-                                  }
-                                </span>
-                                <span class="text-sm text-gray-600 shrink-0">{{ sub.total | currency: 'BRL' }}</span>
-                              </li>
-                            }
-                          </ul>
-                        } @else if (summary.transactionItems.length > 0) {
-                          <ul class="bg-gray-50 divide-y divide-gray-100">
-                            @for (txn of summary.transactionItems; track $index) {
-                              <li class="flex justify-between items-center px-4 py-1.5 pl-11">
-                                <span class="text-sm text-gray-500">{{ txn.description }}</span>
-                                <span class="text-sm text-gray-600">{{ txn.amount | currency: 'BRL' }}</span>
-                              </li>
-                            }
-                          </ul>
-                        }
-                      }
-                    </li>
-                  }
-                </ul>
-              }
-            }
-          </div>
-
-          <div>
-            <h3 class="text-sm font-semibold text-red-700 mb-2">Despesas</h3>
-            @if (expenseSummary(); as list) {
-              @if (list.length === 0) {
-                <p class="text-sm text-gray-400">Nenhuma despesa neste mês.</p>
-              } @else {
-                <ul class="bg-white shadow-sm rounded-lg divide-y divide-gray-200">
-                  @for (summary of list; track summary.categoryId) {
-                    <li>
-                      <div
-                        class="flex justify-between items-center px-4 py-2"
-                        [class.cursor-pointer]="hasSummaryBreakdown(summary)"
-                        [class.hover:bg-gray-50]="hasSummaryBreakdown(summary)"
-                        (click)="hasSummaryBreakdown(summary) && toggleSummaryExpanded(summary.categoryId)"
-                      >
-                        <div class="flex items-center gap-2">
-                          @if (hasSummaryBreakdown(summary)) {
-                            <lucide-icon
-                              [name]="isSummaryExpanded(summary.categoryId) ? 'chevron-down' : 'chevron-right'"
-                              [size]="14"
-                              class="text-gray-400 shrink-0"
-                            ></lucide-icon>
-                          }
-                          <span
-                            class="flex items-center justify-center w-7 h-7 rounded-full shrink-0"
-                            [style.background-color]="summary.categoryColor ?? '#9CA3AF'"
-                          >
-                            <lucide-icon [name]="resolveIconName(summary.categoryIcon ?? '')" [size]="14" color="white"></lucide-icon>
-                          </span>
-                          <span class="text-gray-600">{{ summary.categoryName }}</span>
-                        </div>
-                        <span class="font-medium text-gray-700">{{ summary.total | currency: 'BRL' }}</span>
-                      </div>
-
-                      @if (isSummaryExpanded(summary.categoryId)) {
-                        @if (summary.subcategories.length > 0) {
-                          <ul class="bg-gray-50 divide-y divide-gray-100">
-                            @for (sub of summary.subcategories; track sub.subcategoryId ?? 'none') {
-                              <li class="flex justify-between items-center px-4 py-1.5 pl-11 gap-2">
-                                <span class="text-sm text-gray-500 flex items-center gap-2">
-                                  {{ sub.subcategoryName }}
-                                  @if (sub.paymentTiming) {
-                                    <span class="{{ statusBadgeBaseClass }} {{ paymentTimingBadgeClass[sub.paymentTiming] }}">
-                                      {{ paymentTimingLabel[sub.paymentTiming] }}
-                                    </span>
-                                  }
-                                </span>
-                                <span class="text-sm text-gray-600 shrink-0">{{ sub.total | currency: 'BRL' }}</span>
-                              </li>
-                            }
-                          </ul>
-                        } @else if (summary.transactionItems.length > 0) {
-                          <ul class="bg-gray-50 divide-y divide-gray-100">
-                            @for (txn of summary.transactionItems; track $index) {
-                              <li class="flex justify-between items-center px-4 py-1.5 pl-11">
-                                <span class="text-sm text-gray-500">{{ txn.description }}</span>
-                                <span class="text-sm text-gray-600">{{ txn.amount | currency: 'BRL' }}</span>
-                              </li>
-                            }
-                          </ul>
-                        }
-                      }
-                    </li>
-                  }
-                </ul>
-              }
-            }
-          </div>
-        </div>
-      }
-    } @else {
-      <p class="text-gray-500">Carregando...</p>
-    }
-  </section>
-
   <section>
     <h2 class="text-lg font-semibold text-gray-700 mb-3">Linha do Tempo Diária</h2>
 
-    @if (visibleDailyCashFlow(); as days) {
+    @if (dailyTimelineRows(); as rows) {
       <div class="bg-white shadow-sm rounded-lg overflow-hidden">
         <table class="w-full">
           <thead class="bg-gray-100 text-left text-sm text-gray-600">
@@ -320,77 +179,104 @@
                 Dia
                 <span class="text-gray-400">{{ daySortDirection() === 'asc' ? '▲' : '▼' }}</span>
               </th>
+              <th class="px-4 py-2">Saldo do Dia</th>
               <th class="px-4 py-2">Receitas</th>
               <th class="px-4 py-2">Despesas</th>
-              <th class="px-4 py-2">Saldo do Dia</th>
             </tr>
           </thead>
           <tbody>
-            @if (hiddenPastDaysCount() > 0) {
-              <tr class="border-t border-gray-200 bg-gray-50">
-                <td colspan="4" class="px-4 py-2">
-                  <button
-                    type="button"
-                    (click)="revealPastDaysOfCurrentMonth()"
-                    class="text-sm text-blue-600 hover:text-blue-700 hover:underline transition"
+            @for (row of rows; track trackTimelineRow(row)) {
+              @if (row.kind === 'pastToggle') {
+                <tr class="border-t border-gray-200 bg-gray-50">
+                  <td colspan="4" class="px-4 py-2">
+                    <button
+                      type="button"
+                      (click)="togglePastDaysOfCurrentMonth()"
+                      class="text-sm text-blue-600 hover:text-blue-700 hover:underline transition"
+                    >
+                      @if (row.expanded) {
+                        Esconder dias anteriores deste mês
+                      } @else {
+                        Ver {{ row.count }} {{ row.count === 1 ? 'dia anterior deste mês' : 'dias anteriores deste mês' }}
+                      }
+                    </button>
+                  </td>
+                </tr>
+              } @else if (row.kind === 'range') {
+                <tr class="border-t border-gray-200">
+                  <td class="px-4 py-2 font-normal text-gray-400">
+                    {{ row.startDate | date: 'dd/MM' }} à {{ row.endDate | date: 'dd/MM' }}
+                  </td>
+                  <td class="px-4 py-2 font-medium" [class.text-red-600]="row.dailyBalance < 0">
+                    {{ row.dailyBalance | currency: 'BRL' }}
+                  </td>
+                  <td class="px-4 py-2">
+                    <hr class="w-12 border-t border-gray-300" />
+                  </td>
+                  <td class="px-4 py-2">
+                    <hr class="w-12 border-t border-gray-300" />
+                  </td>
+                </tr>
+              } @else {
+                <tr class="border-t border-gray-200" [class.bg-blue-50]="isToday(row.day.date)">
+                  <td
+                    class="px-4 py-2 font-bold"
+                    [class.text-gray-600]="!isToday(row.day.date)"
+                    [class.text-blue-600]="isToday(row.day.date)"
                   >
-                    Ver {{ hiddenPastDaysCount() }}
-                    {{ hiddenPastDaysCount() === 1 ? 'dia anterior deste mês' : 'dias anteriores deste mês' }}
-                  </button>
-                </td>
-              </tr>
-            }
-            @for (day of days; track day.date.getTime()) {
-              <tr
-                class="border-t border-gray-200"
-                [class.bg-blue-50]="isToday(day.date)"
-              >
-                <td class="px-4 py-2 text-gray-600">
-                  {{ day.date | date: 'dd/MM' }}
-                  @if (isToday(day.date)) {
-                    <span class="ml-1 text-[10px] font-semibold text-blue-600 uppercase">Hoje</span>
-                  }
-                </td>
-                <td
-                  class="px-4 py-2"
-                  [class.text-gray-400]="day.totalIncome === 0"
-                  [class.text-green-600]="day.totalIncome > 0"
-                >
-                  {{ day.totalIncome > 0 ? '+' : '' }}{{ day.totalIncome | currency: 'BRL' }}
-                  @if (day.totalIncome > 0) {
-                    <button
-                      type="button"
-                      (click)="openDayDetail(day, 'income')"
-                      class="ml-1 align-middle text-gray-400 hover:text-gray-600"
-                      aria-label="Detalhes das receitas do dia"
-                      title="Detalhes"
-                    >
-                      <lucide-icon name="info" [size]="14"></lucide-icon>
-                    </button>
-                  }
-                </td>
-                <td
-                  class="px-4 py-2"
-                  [class.text-gray-400]="day.totalExpense === 0"
-                  [class.text-red-600]="day.totalExpense > 0"
-                >
-                  {{ day.totalExpense > 0 ? '-' : '' }}{{ day.totalExpense | currency: 'BRL' }}
-                  @if (day.totalExpense > 0) {
-                    <button
-                      type="button"
-                      (click)="openDayDetail(day, 'expense')"
-                      class="ml-1 align-middle text-gray-400 hover:text-gray-600"
-                      aria-label="Detalhes das despesas do dia"
-                      title="Detalhes"
-                    >
-                      <lucide-icon name="info" [size]="14"></lucide-icon>
-                    </button>
-                  }
-                </td>
-                <td class="px-4 py-2 font-medium" [class.text-red-600]="day.dailyBalance < 0">
-                  {{ day.dailyBalance | currency: 'BRL' }}
-                </td>
-              </tr>
+                    {{ row.day.date | date: 'dd/MM' }}
+                    @if (isToday(row.day.date)) {
+                      <span class="text-xs uppercase">(Hoje)</span>
+                    }
+                  </td>
+                  <td
+                    class="px-4 py-2"
+                    [class.text-red-600]="row.day.dailyBalance < 0"
+                    [class.font-bold]="isToday(row.day.date)"
+                    [class.font-medium]="!isToday(row.day.date)"
+                  >
+                    {{ row.day.dailyBalance | currency: 'BRL' }}
+                  </td>
+                  <td
+                    class="px-4 py-2"
+                    [class.text-gray-400]="row.day.totalIncome === 0"
+                    [class.text-green-600]="row.day.totalIncome > 0"
+                    [class.font-bold]="isToday(row.day.date)"
+                  >
+                    {{ row.day.totalIncome > 0 ? '+' : '' }}{{ row.day.totalIncome | currency: 'BRL' }}
+                    @if (row.day.totalIncome > 0) {
+                      <button
+                        type="button"
+                        (click)="openDayDetail(row.day, 'income')"
+                        class="ml-1 align-middle text-gray-400 hover:text-gray-600"
+                        aria-label="Detalhes das receitas do dia"
+                        title="Detalhes"
+                      >
+                        <lucide-icon name="info" [size]="14"></lucide-icon>
+                      </button>
+                    }
+                  </td>
+                  <td
+                    class="px-4 py-2"
+                    [class.text-gray-400]="row.day.totalExpense === 0"
+                    [class.text-red-600]="row.day.totalExpense > 0"
+                    [class.font-bold]="isToday(row.day.date)"
+                  >
+                    {{ row.day.totalExpense > 0 ? '-' : '' }}{{ row.day.totalExpense | currency: 'BRL' }}
+                    @if (row.day.totalExpense > 0) {
+                      <button
+                        type="button"
+                        (click)="openDayDetail(row.day, 'expense')"
+                        class="ml-1 align-middle text-gray-400 hover:text-gray-600"
+                        aria-label="Detalhes das despesas do dia"
+                        title="Detalhes"
+                      >
+                        <lucide-icon name="info" [size]="14"></lucide-icon>
+                      </button>
+                    }
+                  </td>
+                </tr>
+              }
             }
           </tbody>
         </table>
@@ -440,6 +326,116 @@
           <span>Total</span>
           <span>{{ modal.total | currency: 'BRL' }}</span>
         </div>
+      </div>
+    </div>
+  }
+
+  @if (summaryDetailModal(); as summaryType) {
+    <div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50" (click)="closeSummaryDetail()">
+      <div
+        class="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full mx-4 max-h-[80vh] overflow-y-auto"
+        (click)="$event.stopPropagation()"
+      >
+        <div class="flex items-center justify-between mb-1">
+          <h3 class="text-lg font-semibold text-gray-800">
+            {{ summaryType === 'Income' ? 'Receitas' : 'Despesas' }} — {{ selectedMonthLabelCapitalized() }}
+          </h3>
+          <button
+            type="button"
+            (click)="closeSummaryDetail()"
+            class="text-gray-400 hover:text-gray-600"
+            aria-label="Fechar"
+          >
+            <lucide-icon name="x" [size]="18"></lucide-icon>
+          </button>
+        </div>
+
+        @if (summaryType === 'Income') {
+          <p class="text-xs text-gray-500 mb-4">
+            {{ incomeStatusTotal().total | currency: 'BRL' }}
+            @if (incomeStatusTotal().pending > 0) {
+              <span class="text-amber-600"> · {{ incomeStatusTotal().pending | currency: 'BRL' }} pendente</span>
+            }
+          </p>
+        } @else {
+          <p class="text-xs text-gray-500 mb-4">
+            {{ expenseStatusTotal().total | currency: 'BRL' }}
+            @if (expenseStatusTotal().paid > 0) {
+              <span class="text-green-600"> · {{ expenseStatusTotal().paid | currency: 'BRL' }} pago</span>
+            }
+            @if (expenseStatusTotal().pending > 0) {
+              <span class="text-amber-600"> · {{ expenseStatusTotal().pending | currency: 'BRL' }} pendente</span>
+            }
+          </p>
+        }
+
+        @if (summaryDetailList(); as list) {
+          @if (list.length === 0) {
+            <p class="text-sm text-gray-400">
+              {{ summaryType === 'Income' ? 'Nenhuma receita neste mês.' : 'Nenhuma despesa neste mês.' }}
+            </p>
+          } @else {
+            <ul class="divide-y divide-gray-100">
+              @for (summary of list; track summary.categoryId) {
+                <li>
+                  <div
+                    class="flex justify-between items-center py-2"
+                    [class.cursor-pointer]="hasSummaryBreakdown(summary)"
+                    [class.hover:bg-gray-50]="hasSummaryBreakdown(summary)"
+                    (click)="hasSummaryBreakdown(summary) && toggleSummaryExpanded(summary.categoryId)"
+                  >
+                    <div class="flex items-center gap-2">
+                      @if (hasSummaryBreakdown(summary)) {
+                        <lucide-icon
+                          [name]="isSummaryExpanded(summary.categoryId) ? 'chevron-down' : 'chevron-right'"
+                          [size]="14"
+                          class="text-gray-400 shrink-0"
+                        ></lucide-icon>
+                      }
+                      <span
+                        class="flex items-center justify-center w-7 h-7 rounded-full shrink-0"
+                        [style.background-color]="summary.categoryColor ?? '#9CA3AF'"
+                      >
+                        <lucide-icon [name]="resolveIconName(summary.categoryIcon ?? '')" [size]="14" color="white"></lucide-icon>
+                      </span>
+                      <span class="text-gray-600">{{ summary.categoryName }}</span>
+                    </div>
+                    <span class="font-medium text-gray-700">{{ summary.total | currency: 'BRL' }}</span>
+                  </div>
+
+                  @if (isSummaryExpanded(summary.categoryId)) {
+                    @if (summary.subcategories.length > 0) {
+                      <ul class="bg-gray-50 divide-y divide-gray-100">
+                        @for (sub of summary.subcategories; track sub.subcategoryId ?? 'none') {
+                          <li class="flex justify-between items-center py-1.5 pl-9 gap-2">
+                            <span class="text-sm text-gray-500 flex items-center gap-2">
+                              {{ sub.subcategoryName }}
+                              @if (sub.paymentTiming) {
+                                <span class="{{ statusBadgeBaseClass }} {{ paymentTimingBadgeClass[sub.paymentTiming] }}">
+                                  {{ paymentTimingLabel[sub.paymentTiming] }}
+                                </span>
+                              }
+                            </span>
+                            <span class="text-sm text-gray-600 shrink-0">{{ sub.total | currency: 'BRL' }}</span>
+                          </li>
+                        }
+                      </ul>
+                    } @else if (summary.transactionItems.length > 0) {
+                      <ul class="bg-gray-50 divide-y divide-gray-100">
+                        @for (txn of summary.transactionItems; track $index) {
+                          <li class="flex justify-between items-center py-1.5 pl-9">
+                            <span class="text-sm text-gray-500">{{ txn.description }}</span>
+                            <span class="text-sm text-gray-600">{{ txn.amount | currency: 'BRL' }}</span>
+                          </li>
+                        }
+                      </ul>
+                    }
+                  }
+                </li>
+              }
+            </ul>
+          }
+        }
       </div>
     </div>
   }

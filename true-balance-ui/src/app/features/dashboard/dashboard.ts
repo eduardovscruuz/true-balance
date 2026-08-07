@@ -60,6 +60,17 @@ export interface DayCashFlow {
   expenseDetails: CashFlowDetailItem[];
 }
 
+// O que a Linha do Tempo Diária de fato renderiza — nem sempre um dia vira uma linha:
+// 'pastToggle' é o link "Ver N dias anteriores/Esconder" (um só, que já troca de texto
+// conforme expanded — ver template), e 'range' é uma faixa de dias FUTUROS consecutivos
+// sem nenhum movimento (ex: "08/08 à 09/08") — ver compactZeroMovementRuns. Dias futuros
+// sempre aparecem (sem toggle de esconder/mostrar) — só os que não têm NENHUM movimento
+// (nem receita nem despesa) é que colapsam numa faixa.
+export type DailyTimelineRow =
+  | { kind: 'day'; day: DayCashFlow }
+  | { kind: 'range'; startDate: Date; endDate: Date; dailyBalance: number }
+  | { kind: 'pastToggle'; expanded: boolean; count: number };
+
 export interface SubcategorySummaryRow {
   subcategoryId: string | null;
   subcategoryName: string;
@@ -499,8 +510,9 @@ export class Dashboard {
 
   // No mês atual, os dias já passados deste mesmo mês raramente importam (já aconteceram
   // e não mudam mais) — ficam escondidos por padrão, só o "hoje" em diante aparece de
-  // cara. "Ver dias anteriores" revela de volta. Em qualquer outro mês (passado ou
-  // futuro) não existe "dia anterior irrelevante" — todos aparecem sempre.
+  // cara. "Ver dias anteriores" revela de volta, "Esconder" some com eles de novo. Em
+  // qualquer outro mês (passado ou futuro) não existe "dia anterior irrelevante" — todos
+  // aparecem sempre.
   readonly showPastDaysOfCurrentMonth = signal(false);
 
   constructor() {
@@ -519,8 +531,8 @@ export class Dashboard {
     this.daySortDirection.update((dir) => (dir === 'asc' ? 'desc' : 'asc'));
   }
 
-  revealPastDaysOfCurrentMonth(): void {
-    this.showPastDaysOfCurrentMonth.set(true);
+  togglePastDaysOfCurrentMonth(): void {
+    this.showPastDaysOfCurrentMonth.update((expanded) => !expanded);
   }
 
   isToday(date: Date): boolean {
@@ -529,6 +541,17 @@ export class Dashboard {
       date.getMonth() === this.today.getMonth() &&
       date.getDate() === this.today.getDate()
     );
+  }
+
+  trackTimelineRow(row: DailyTimelineRow): string {
+    switch (row.kind) {
+      case 'day':
+        return `day:${row.day.date.getTime()}`;
+      case 'range':
+        return `range:${row.startDate.getTime()}`;
+      case 'pastToggle':
+        return 'pastToggle';
+    }
   }
 
   // Reaproveitado pelos três detalhamentos "i" do Dashboard (Linha do Tempo, dívidas
@@ -785,45 +808,101 @@ export class Dashboard {
     });
   });
 
-  readonly dailyCashFlow = computed<DayCashFlow[] | undefined>(() => {
+  // Agrupa uma sequência (já em ordem cronológica) de dias FUTUROS em linhas — dias com
+  // movimento (receita ou despesa) viram uma linha normal; sequências de 2+ dias
+  // CONSECUTIVOS sem nenhum movimento viram uma única linha "de X a Y" (ver
+  // DailyTimelineRow). Um dia isolado sem movimento (cercado por dias com movimento) não
+  // vira faixa sozinho — só aparece como dia normal com Receitas/Despesas R$ 0,00, senão
+  // ficaria uma faixa de 1 dia só ("21 a 21"), que não ajuda em nada. Recalculado do zero
+  // toda vez a partir dos dados atuais — não guarda nenhum estado, então uma transação
+  // nova lançada no meio de uma faixa já existente naturalmente quebra ela em pedaços na
+  // próxima leitura, sem precisar de nenhuma lógica extra de "recalcular faixa".
+  private compactZeroMovementRuns(days: DayCashFlow[]): DailyTimelineRow[] {
+    const rows: DailyTimelineRow[] = [];
+    let i = 0;
+
+    while (i < days.length) {
+      const isZeroMovement = (day: DayCashFlow) => day.totalIncome === 0 && day.totalExpense === 0;
+
+      if (!isZeroMovement(days[i])) {
+        rows.push({ kind: 'day', day: days[i] });
+        i++;
+        continue;
+      }
+
+      let j = i;
+      while (j < days.length && isZeroMovement(days[j])) {
+        j++;
+      }
+
+      if (j - i >= 2) {
+        rows.push({ kind: 'range', startDate: days[i].date, endDate: days[j - 1].date, dailyBalance: days[j - 1].dailyBalance });
+      } else {
+        rows.push({ kind: 'day', day: days[i] });
+      }
+
+      i = j;
+    }
+
+    return rows;
+  }
+
+  // Monta as linhas em ordem cronológica (ascendente) — a ordenação asc/desc escolhida
+  // pelo usuário (ver daySortDirection) só é aplicada NO FINAL, invertendo a lista
+  // inteira já pronta (ver dailyTimelineRows), pra não complicar a lógica de "qual dia é
+  // hoje"/"qual é o último do mês" com dois sentidos possíveis.
+  private readonly ascendingTimelineRows = computed<DailyTimelineRow[] | undefined>(() => {
     const days = this.unsortedDailyCashFlow();
 
     if (days === undefined) {
       return undefined;
     }
 
-    const sorted = [...days];
-
-    if (this.daySortDirection() === 'desc') {
-      sorted.reverse();
+    // Fora do mês atual não existe "passado irrelevante" nem "futuro ainda não
+    // acontecido" — é tudo passado (mês anterior) ou tudo projeção (mês seguinte em
+    // diante), então mostra a lista inteira, um dia por linha, sem esconder nada.
+    if (!this.isCurrentMonth()) {
+      return days.map((day) => ({ kind: 'day', day }));
     }
 
-    return sorted;
+    const todayIndex = this.today.getDate() - 1;
+    const lastIndex = days.length - 1;
+    const rows: DailyTimelineRow[] = [];
+    const pastExpanded = this.showPastDaysOfCurrentMonth();
+
+    if (todayIndex > 0) {
+      rows.push({ kind: 'pastToggle', expanded: pastExpanded, count: todayIndex });
+    }
+
+    if (pastExpanded) {
+      for (let i = 0; i < todayIndex; i++) {
+        rows.push({ kind: 'day', day: days[i] });
+      }
+    }
+
+    rows.push({ kind: 'day', day: days[todayIndex] });
+
+    if (todayIndex < lastIndex) {
+      // Dias estritamente entre hoje e o último dia do mês — sempre visíveis (sem
+      // esconder/expandir), só os que não têm NENHUM movimento colapsam numa faixa (ver
+      // compactZeroMovementRuns). O último dia em si é sempre mostrado à parte logo
+      // abaixo, nunca dobrado numa faixa.
+      const futureMiddle = days.slice(todayIndex + 1, lastIndex);
+      rows.push(...this.compactZeroMovementRuns(futureMiddle));
+      rows.push({ kind: 'day', day: days[lastIndex] });
+    }
+
+    return rows;
   });
 
-  // Quantos dias já passados do mês ATUAL estão escondidos — só existe algo pra esconder
-  // quando o mês selecionado é mesmo o de hoje (nos outros meses, nada é escondido).
-  readonly hiddenPastDaysCount = computed(() => {
-    if (!this.isCurrentMonth() || this.showPastDaysOfCurrentMonth()) {
-      return 0;
+  readonly dailyTimelineRows = computed<DailyTimelineRow[] | undefined>(() => {
+    const rows = this.ascendingTimelineRows();
+
+    if (rows === undefined) {
+      return undefined;
     }
 
-    return this.today.getDate() - 1;
-  });
-
-  // O que a tabela de fato renderiza: no mês atual, com dias anteriores ainda
-  // escondidos, corta tudo antes de hoje (hoje em diante continua visível, incluindo o
-  // próprio dia de hoje) — em qualquer outro caso (mês passado/futuro, ou dias
-  // anteriores já revelados), mostra a lista inteira sem cortar nada.
-  readonly visibleDailyCashFlow = computed<DayCashFlow[] | undefined>(() => {
-    const days = this.dailyCashFlow();
-
-    if (days === undefined || this.hiddenPastDaysCount() === 0) {
-      return days;
-    }
-
-    const todayDate = this.today.getDate();
-    return days.filter((day) => day.date.getDate() >= todayDate);
+    return this.daySortDirection() === 'desc' ? [...rows].reverse() : rows;
   });
 
   // Categorias com a linha expandida (mostrando a quebra por subcategoria) no Resumo do
@@ -858,6 +937,28 @@ export class Dashboard {
 
       return next;
     });
+  }
+
+  // As linhas "Entradas"/"Saídas" de cada card de Saldo Atual abrem este modal com a
+  // mesma lista expansível por categoria que antes ficava sempre visível na seção
+  // "Resumo do Mês" (removida — duplicava as mesmas entradas/saídas já mostradas aqui).
+  readonly summaryDetailModal = signal<'Income' | 'Expense' | null>(null);
+
+  readonly summaryDetailList = computed(() => {
+    const type = this.summaryDetailModal();
+    return type === 'Income' ? this.incomeSummary() : type === 'Expense' ? this.expenseSummary() : undefined;
+  });
+
+  // Cada card de conta mostra a própria Entradas/Saídas, então clicar numa linha precisa
+  // primeiro tornar AQUELA conta a ativa (incomeSummary/expenseSummary só calculam pra
+  // activeAccountId) — senão o modal abriria com o detalhe de outra conta.
+  openAccountSummaryDetail(accountId: string, type: 'Income' | 'Expense'): void {
+    this.selectAccount(accountId);
+    this.summaryDetailModal.set(type);
+  }
+
+  closeSummaryDetail(): void {
+    this.summaryDetailModal.set(null);
   }
 
   // Calculado a partir das transações do mês (não da monthly_summaries, que só é
@@ -960,7 +1061,7 @@ export class Dashboard {
   // Color/Icon que cada cartão já tem (ver Fase de credit-card-form) já resolve a
   // identidade visual, e essa quebra é só de EXIBIÇÃO — as categorias reais de cada item
   // da fatura continuam intocadas em Transações do Mês.
-  private creditCardSummaryRow(): MonthSummaryRow | null {
+  private readonly creditCardSummaryRow = computed<MonthSummaryRow | null>(() => {
     const activeAccountId = this.activeAccountId();
     const linkedCards = this.creditCards().filter((card) => card.paymentAccountId === activeAccountId);
 
@@ -1065,12 +1166,55 @@ export class Dashboard {
       }),
       transactionItems: [],
     };
-  }
+  });
 
   // Duas colunas lado a lado (Receitas / Despesas) em vez de uma lista só — mais fácil
   // de comparar os dois de relance, sem misturar tipos diferentes na mesma coluna.
   readonly incomeSummary = computed(() => this.monthSummary()?.filter((row) => row.type === 'Income'));
   readonly expenseSummary = computed(() => this.monthSummary()?.filter((row) => row.type === 'Expense'));
+
+  // Detalhamento pago/pendente do total de cada coluna do Resumo do Mês (Sprint 3) —
+  // calculado direto das transações (não a partir das linhas já agrupadas por categoria)
+  // porque MonthSummaryRow só guarda o total, sem quebra por status. Cartão entra aqui
+  // reaproveitando creditCardSummaryRow() (a mesma linha sintética "Cartões" que já
+  // aparece no Resumo do Mês) — sem isso, pago+pendente não bateria com o total exibido
+  // quando a conta tiver cartão vinculado.
+  private statusTotalFor(type: 'Income' | 'Expense'): { total: number; paid: number; pending: number } {
+    let paid = 0;
+    let pending = 0;
+
+    for (const transaction of this.accountTransactions() ?? []) {
+      if (transaction.type !== type) {
+        continue;
+      }
+
+      if (transaction.status === 'Paid') {
+        paid += transaction.amount;
+      } else {
+        pending += transaction.amount;
+      }
+    }
+
+    const cardRow = this.creditCardSummaryRow();
+
+    if (cardRow && cardRow.type === type) {
+      for (const sub of cardRow.subcategories) {
+        // paymentTiming só é preenchido quando a fatura inteira já foi paga (ver
+        // creditCardSummaryRow) — serve aqui só como "está paga?", o valor em si não
+        // interessa.
+        if (sub.paymentTiming !== null) {
+          paid += sub.total;
+        } else {
+          pending += sub.total;
+        }
+      }
+    }
+
+    return { total: paid + pending, paid, pending };
+  }
+
+  readonly incomeStatusTotal = computed(() => this.statusTotalFor('Income'));
+  readonly expenseStatusTotal = computed(() => this.statusTotalFor('Expense'));
 
   private transactionsForDay<T extends CashFlowEntry>(transactions: T[], year: number, month: number, day: number): T[] {
     // Usa os getters UTC de propósito: o backend serializa a data como meia-noite UTC
